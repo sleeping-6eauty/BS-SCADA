@@ -160,6 +160,7 @@ const isUrgentDate = (date) => date <= '2024-09-30'
         <a>설비 현황</a>
         <a>설비 상세</a>
         <a>알람 관리</a>
+        <a>사용자 관리</a>
         <a class="active">수명 관리</a>
       </nav>
       <div class="top-actions">
