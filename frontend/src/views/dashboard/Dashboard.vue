@@ -75,6 +75,7 @@ const setPage = (page) => {
         <a>설비 현황</a>
         <a>설비 상세</a>
         <a>알람 관리</a>
+        <a>사용자 관리</a>
         <a>수명 관리</a>
       </nav>
       <div class="top-actions">
