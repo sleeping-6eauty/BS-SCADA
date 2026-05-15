@@ -76,6 +76,7 @@ const setPage = (page) => {
         <a>설비 상세</a>
         <a>알람 관리</a>
         <a>수명 관리</a>
+        <a>사용자 관리</a>
       </nav>
       <div class="top-actions">
         <div class="time">◷ 2024-05-24 10:30:45</div>
@@ -207,8 +208,9 @@ const setPage = (page) => {
 .brand { width: 305px; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 30px; border-right: 1px solid rgba(255,255,255,.12); font-size: 19px; }
 .brand-icon { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.45); border-radius: 10px; }
 .gnb { display: flex; height: 100%; }
-.gnb a { min-width: 138px; display: grid; place-items: center; font-size: 17px; font-weight: 800; color: rgba(255,255,255,.9); position: relative; }
-.gnb a.active::after { content: ''; position: absolute; left: 24px; right: 24px; bottom: 0; height: 5px; background: #16c7d8; border-radius: 8px 8px 0 0; }
+.gnb { flex: 1; min-width: 0; }
+.gnb a { min-width: 118px; display: grid; place-items: center; font-size: 16px; font-weight: 800; color: rgba(255,255,255,.9); position: relative; white-space: nowrap; }
+.gnb a.active::after { content: ''; position: absolute; left: 18px; right: 18px; bottom: 0; height: 5px; background: #16c7d8; border-radius: 8px 8px 0 0; }
 .top-actions { margin-left: auto; height: 100%; display: flex; align-items: center; }
 .time, .admin, .bell { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; border-left: 1px solid rgba(255,255,255,.12); }
 .bell { position: relative; border: 0; color: #fff; background: transparent; font-size: 22px; cursor: pointer; }
@@ -247,5 +249,5 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .more-btn { border: 0; background: transparent; color: #0d2448; font-weight: 950; cursor: pointer; }
 .life-table th, .life-table td { height: 42px; } .life-cell strong { min-width: 46px; background: transparent !important; font-weight: 950; }
 .life-table td.red, .life-table td.orange, .life-table td.yellow, .life-table td.green { background: transparent; font-weight: 950; }
-@media (max-width: 1280px) { .dashboard-page { min-width: 1100px; } .gnb a { min-width: 116px; } .brand { width: 280px; } }
+@media (max-width: 1280px) { .dashboard-page { min-width: 1200px; } .gnb a { min-width: 104px; font-size: 15px; } .brand { width: 280px; } }
 </style>
