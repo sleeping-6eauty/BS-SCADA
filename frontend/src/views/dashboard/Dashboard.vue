@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import AppTopbar from '@/components/AppTopbar.vue'
 
 const selectedLine = ref('전체')
 const currentPage = ref(1)
