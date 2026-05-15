@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Login from '../views/auth/Login.vue'
 import Signup from '../views/auth/Signup.vue'
 import Dashboard from '../views/dashboard/Dashboard.vue'
+import Permission from '../views/admin/Permission.vue'
 import EquipmentLife from '../life/EquipmentLife.vue'
 
 const routes = [
@@ -25,6 +26,9 @@ const routes = [
     component: Dashboard,
   },
   {
+    path: '/admin/permission',
+    name: 'permission',
+    component: Permission,
     path: '/life',
     name: 'life',
     component: EquipmentLife,
