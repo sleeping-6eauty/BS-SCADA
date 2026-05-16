@@ -8,7 +8,7 @@ defineProps({
 
 const menuItems = [
   { label: '대시보드', to: '/dashboard' },
-  { label: '설비 현황' },
+  { label: '설비 현황', to: '/equipment-monitor' },
   { label: '설비 상세', to: '/equipment-detail' },
   { label: '알람 관리' },
   { label: '수명 관리' },
