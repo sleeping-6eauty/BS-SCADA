@@ -1,30 +1,6 @@
 <template>
   <div class="alarm-page">
-    <!-- Top Navigation -->
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-icon">⌬</div>
-      </div>
-
-      <nav class="top-menu">
-        <button>대시보드</button>
-        <button>실시간 모니터링</button>
-        <button>설비 현황</button>
-        <button>설비 상세</button>
-        <button class="active">알람 관리</button>
-      </nav>
-
-      <div class="top-actions">
-        <span class="time-icon">◷</span>
-        <span class="current-time">2024-05-24 10:30:45</span>
-        <span class="user-icon">👤</span>
-        <span class="admin">관리자</span>
-        <div class="bell">
-          🔔
-          <span>3</span>
-        </div>
-      </div>
-    </header>
+    <AppTopbar activeMenu="알람 관리" />
 
     <main class="page-body">
       <!-- Left Sidebar -->
@@ -42,27 +18,6 @@
             <i :class="['status-dot', item.status]"></i>
           </button>
 
-          <div class="side-divider"></div>
-
-          <h3>시간 범위 선택</h3>
-          <div class="range-buttons">
-            <button class="selected">1시간</button>
-            <button>24시간</button>
-            <button>7일</button>
-          </div>
-
-          <div class="auto-refresh">
-            <span>자동 갱신</span>
-            <label class="switch">
-              <input type="checkbox" checked />
-              <span></span>
-            </label>
-          </div>
-
-          <button class="setting-button">
-            <span>⚙</span>
-            설정
-          </button>
         </section>
 
         <section class="side-card assigned-card">
@@ -256,48 +211,27 @@
             </div>
           </section>
 
-          <section class="detail-card small-card">
-            <h3>다음 점검 예정일</h3>
-            <div class="schedule-row">
-              <div class="schedule-left">
-                <span class="calendar-icon">▣</span>
-                <div>
-                  <strong>2024-06-05</strong>
-                  <p>예방 정비 (정기 점검)</p>
-                </div>
-              </div>
-              <span class="d-day">D-12</span>
-            </div>
-          </section>
-
           <section class="detail-card history-card">
-            <h3>조치 이력</h3>
-            <div class="timeline">
-              <div class="timeline-item active">
-                <span class="timeline-dot"></span>
-                <div>
-                  <div class="timeline-top">
-                    <strong>2024-05-24 10:26:10</strong>
-                    <span class="badge progress">조치중</span>
-                  </div>
-                  <p>담당자 김지훈이 알람을 확인하고 조치 중입니다.</p>
-                </div>
+            <h3>조치 이력 & 메모</h3>
+            <div class="history-memo-wrap">
+              <div class="memo-section">
+                <h4>메모 작성</h4>
+                <textarea v-model="memoInput" class="memo-input" placeholder="조치 내용이나 메모를 입력하세요..."></textarea>
+                <button @click="addMemo" class="memo-button">메모 추가</button>
               </div>
 
-              <div class="timeline-item">
-                <span class="timeline-dot"></span>
-                <div>
-                  <div class="timeline-top">
-                    <strong>2024-05-24 10:25:56</strong>
-                    <span class="badge generated">알람 발생</span>
+              <div class="memo-list" v-if="memoList.length > 0">
+                <h4>메모 목록</h4>
+                <div v-for="(memo, index) in memoList" :key="index" class="memo-item">
+                  <div class="memo-header">
+                    <span class="memo-time">{{ memo.time }}</span>
+                    <button @click="removeMemo(index)" class="memo-delete">×</button>
                   </div>
-                  <p>시스템에서 자동으로 알람을 생성했습니다.</p>
+                  <p class="memo-text">{{ memo.text }}</p>
                 </div>
               </div>
             </div>
           </section>
-
-          <button class="register-button">알람 처리 등록</button>
         </aside>
       </section>
     </main>
@@ -306,8 +240,34 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import AppTopbar from '../../components/AppTopbar.vue'
 
 const selectedEquipment = ref('Robot A1')
+const memoInput = ref('')
+const memoList = ref([])
+
+const addMemo = () => {
+  if (memoInput.value.trim()) {
+    const now = new Date()
+    const timeStr = now.toLocaleString('ko-KR', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    }).replace(/\. /g, '-').replace('.', '')
+    memoList.value.unshift({
+      time: timeStr,
+      text: memoInput.value
+    })
+    memoInput.value = ''
+  }
+}
+
+const removeMemo = (index) => {
+  memoList.value.splice(index, 1)
+}
 
 const equipmentList = [
   { name: 'Robot A1', icon: '⚙', status: 'green' },
@@ -382,14 +342,15 @@ const barHeight = (value) => 138 - barY(value)
 
 .alarm-page {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   color: #1f2933;
   background: #f6efe6;
   font-family: 'Pretendard', 'Noto Sans KR', Arial, sans-serif;
+  overflow: hidden;
 }
 
 .topbar {
-  height: 74px;
+  height: 66px;
   padding: 0 26px;
   display: flex;
   align-items: center;
@@ -493,17 +454,22 @@ const barHeight = (value) => 138 - barY(value)
 .page-body {
   display: grid;
   grid-template-columns: 312px 1fr;
-  min-height: calc(100vh - 74px);
+  height: calc(100vh - 70px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
-  padding: 18px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px;
+  overflow: hidden;
   background: linear-gradient(180deg, #00376e 0%, #00264d 100%);
   color: #fff;
 }
 
 .side-card {
-  padding: 18px 16px;
+  padding: 14px 14px;
   border: 1px solid rgba(255, 255, 255, 0.11);
   border-radius: 8px;
   background: rgba(0, 32, 72, 0.42);
@@ -511,7 +477,7 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .side-card + .side-card {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .side-card h3 {
@@ -522,7 +488,7 @@ const barHeight = (value) => 138 - barY(value)
 
 .equipment-item {
   width: 100%;
-  height: 40px;
+  height: 36px;
   padding: 0 14px;
   border: 0;
   border-radius: 6px;
@@ -568,7 +534,7 @@ const barHeight = (value) => 138 - barY(value)
 
 .side-divider {
   height: 1px;
-  margin: 18px -4px;
+  margin: 14px -4px;
   background: rgba(255, 255, 255, 0.16);
 }
 
@@ -640,7 +606,7 @@ const barHeight = (value) => 138 - barY(value)
 
 .setting-button {
   width: 100%;
-  height: 58px;
+  height: 48px;
   padding: 0 16px;
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 8px;
@@ -655,20 +621,26 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .assigned-card {
-  min-height: 382px;
+  min-height: 0;
+  height: calc(100vh - 66px - 380px);
 }
 
 .content-area {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 470px;
-  gap: 16px;
-  padding: 22px 26px 20px 18px;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px 22px 14px 16px;
+  overflow: hidden;
 }
 
 .main-column {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  grid-template-rows: 28% 22% minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .panel,
@@ -680,14 +652,16 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .panel {
-  padding: 18px 26px 12px;
+  min-height: 0;
+  padding: 14px 22px 10px;
+  overflow: hidden;
 }
 
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .panel-header h2 {
@@ -726,11 +700,13 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .line-chart-wrap {
-  height: 200px;
+  height: calc(100% - 46px);
+  min-height: 130px;
 }
 
 .bar-chart-wrap {
-  height: 165px;
+  height: calc(100% - 42px);
+  min-height: 105px;
 }
 
 .line-chart,
@@ -783,7 +759,10 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .table-panel {
-  padding-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-bottom: 12px;
 }
 
 .table-title {
@@ -791,6 +770,8 @@ const barHeight = (value) => 138 - barY(value)
 }
 
 .table-wrap {
+  flex: 1;
+  min-height: 0;
   border: 1px solid #e2d0bc;
   border-radius: 4px;
   overflow: hidden;
@@ -805,7 +786,7 @@ table {
 
 th,
 td {
-  height: 32px;
+  height: 28px;
   padding: 0 12px;
   border-right: 1px solid #e2d0bc;
   border-bottom: 1px solid #e2d0bc;
@@ -882,7 +863,7 @@ tbody tr:nth-child(even) {
   display: grid;
   grid-template-columns: 160px 1fr 140px;
   align-items: center;
-  margin-top: 22px;
+  margin-top: 12px;
   font-size: 15px;
 }
 
@@ -894,8 +875,8 @@ tbody tr:nth-child(even) {
 }
 
 .pagination button {
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -919,9 +900,11 @@ tbody tr:nth-child(even) {
 }
 
 .detail-column {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .detail-card {
@@ -929,8 +912,8 @@ tbody tr:nth-child(even) {
 }
 
 .detail-card-header {
-  height: 56px;
-  padding: 0 28px;
+  height: 48px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   border-bottom: 1px solid #e6d5c2;
@@ -944,7 +927,9 @@ tbody tr:nth-child(even) {
 }
 
 .detail-content {
-  padding: 20px 28px 28px;
+  height: calc(100% - 48px);
+  padding: 16px 24px 20px;
+  overflow: hidden;
 }
 
 .detail-badges {
@@ -955,7 +940,7 @@ tbody tr:nth-child(even) {
 }
 
 .detail-content h2 {
-  margin: 0 0 20px;
+  margin: 0 0 14px;
   font-size: 22px;
   font-weight: 900;
   color: #15191f;
@@ -990,8 +975,8 @@ tbody tr:nth-child(even) {
 }
 
 .alarm-info-box {
-  margin-top: 28px;
-  padding: 20px 18px;
+  margin-top: 18px;
+  padding: 16px 16px;
   border: 1px solid #e4d2bf;
   border-radius: 8px;
   background: rgba(255, 252, 248, 0.8);
@@ -1004,12 +989,143 @@ tbody tr:nth-child(even) {
 }
 
 .alarm-info-box dl div + div {
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
-.small-card,
 .history-card {
-  padding: 22px 28px;
+  padding: 18px 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-card h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.history-memo-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.memo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  background: rgba(255, 252, 248, 0.92);
+  padding-bottom: 10px;
+  z-index: 1;
+}
+
+.memo-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.memo-section h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  color: #2a2f36;
+}
+
+.memo-input {
+  width: 100%;
+  height: 60px;
+  padding: 10px;
+  border: 1px solid #d8d0c7;
+  border-radius: 6px;
+  background: #fffaf3;
+  color: #2a2f36;
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+}
+
+.memo-input::placeholder {
+  color: #9ca3af;
+}
+
+.memo-button {
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: #003d78;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.memo-button:hover {
+  background: #002951;
+}
+
+.memo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.memo-list h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 900;
+  color: #2a2f36;
+}
+
+.memo-item {
+  padding: 10px;
+  border: 1px solid #e6d5c2;
+  border-radius: 6px;
+  background: rgba(255, 252, 248, 0.8);
+}
+
+.memo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.memo-time {
+  font-size: 12px;
+  font-weight: 800;
+  color: #5b5f66;
+}
+
+.memo-delete {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: #a5a5a5;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.memo-delete:hover {
+  color: #ff4f63;
+}
+
+.memo-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #2a2f36;
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .schedule-row {
@@ -1117,17 +1233,7 @@ tbody tr:nth-child(even) {
   line-height: 1.45;
 }
 
-.register-button {
-  height: 58px;
-  border: 0;
-  border-radius: 6px;
-  background: #003d78;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 900;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(0, 61, 120, 0.22);
-}
+
 
 @media (max-width: 1500px) {
   .top-menu {
