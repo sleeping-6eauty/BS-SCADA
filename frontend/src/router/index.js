@@ -6,6 +6,7 @@ import Permission from '../views/admin/Permission.vue'
 import EquipmentLife from '../life/EquipmentLife.vue'
 import EquipmentMonitoring from '../views/EquipmentMonitoring/EquipmentMonitoring.vue'
 import EquipmentDetail from '../views/EquipmentDetail/EquipmentDetail.vue'
+import EquipmentAlarm from '../views/EquipmentAlarm/EquipmentAlarm.vue'
 
 const routes = [
   {
@@ -36,6 +37,11 @@ const routes = [
     path: '/equipment-detail',
     name: 'equipment-detail',
     component: EquipmentDetail,
+  },
+  {
+    path: '/equipment-alarm',
+    name: 'equipment-alarm',
+    component: EquipmentAlarm,
   },
   {
     path: '/admin/permission',
