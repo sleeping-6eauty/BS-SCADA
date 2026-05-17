@@ -1,25 +1,6 @@
 <template>
   <div class="equipment-page">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-icon">▱</div>
-        <span>설비 모니터링 시스템</span>
-      </div>
-
-      <nav class="nav-tabs">
-        <button class="nav-tab active">대시보드</button>
-        <button class="nav-tab">설비 현황</button>
-        <button class="nav-tab">설비 상세</button>
-        <button class="nav-tab">알람 관리</button>
-        <button class="nav-tab">수명 관리</button>
-      </nav>
-
-      <div class="top-actions">
-        <div class="time">◷ 2024-05-24 10:30:45</div>
-        <div class="user">👤 관리자</div>
-        <div class="bell">🔔<span>4</span></div>
-      </div>
-    </header>
+    <AppTopbar activeMenu="설비 현황" />
 
     <main class="page-body">
       <section class="left-column">
@@ -175,6 +156,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
+import AppTopbar from '../../components/AppTopbar.vue'
 
 const statusText = {
   running: '가동',
@@ -360,115 +342,12 @@ const currentSensorData = computed(() => {
   background: #f4f7fb;
   color: #0f2748;
   font-family: Pretendard, Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
-.topbar {
-  height: 58px;
   display: flex;
-  align-items: center;
-  background: #062f63;
-  color: #fff;
-  box-shadow: 0 2px 10px rgba(4, 35, 74, 0.18);
-}
-
-.brand {
-  width: 240px;
-  flex: 0 0 240px;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px;
-  font-weight: 800;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.brand-icon {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 8px;
-}
-
-.nav-tabs {
-  height: 100%;
-  display: flex;
-  min-width: 0;
-}
-
-.nav-tab {
-  min-width: 120px;
-  padding: 0 18px;
-  border: 0;
-  background: transparent;
-  color: #eaf2ff;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.nav-tab.active {
-  background: #ffffff;
-  color: #06346e;
-  position: relative;
-}
-
-.nav-tab.active::after {
-  content: '';
-  position: absolute;
-  left: 22px;
-  right: 22px;
-  bottom: 0;
-  height: 3px;
-  border-radius: 10px;
-  background: #4d8df7;
-}
-
-.top-actions {
-  margin-left: auto;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-}
-
-.time,
-.user,
-.bell {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.bell {
-  position: relative;
-  font-size: 18px;
-}
-
-.bell span {
-  position: absolute;
-  top: 11px;
-  right: 10px;
-  min-width: 16px;
-  height: 16px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: #ff3b4e;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
+  flex-direction: column;
 }
 
 .page-body {
-  height: calc(100vh - 58px);
+  height: calc(100vh - 70px);
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
   gap: 12px;
