@@ -1,6 +1,6 @@
 <template>
   <div class="alarm-page">
-    <AppTopbar activeMenu="알람 관리" />
+    <AppTopbar active-menu="알람 관리" />
 
     <main class="page-body">
       <!-- Left Sidebar -->
@@ -240,7 +240,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import AppTopbar from '../../components/AppTopbar.vue'
+import AppTopbar from '@/components/AppTopbar.vue'
 
 const selectedEquipment = ref('Robot A1')
 const memoInput = ref('')
@@ -347,108 +347,6 @@ const barHeight = (value) => 138 - barY(value)
   background: #f6efe6;
   font-family: 'Pretendard', 'Noto Sans KR', Arial, sans-serif;
   overflow: hidden;
-}
-
-.topbar {
-  height: 66px;
-  padding: 0 26px;
-  display: flex;
-  align-items: center;
-  background: linear-gradient(90deg, #002b5f 0%, #003d78 45%, #062f62 100%);
-  color: #fff;
-  box-shadow: 0 4px 18px rgba(0, 31, 73, 0.25);
-}
-
-.brand {
-  width: 92px;
-  display: flex;
-  align-items: center;
-}
-
-.brand-icon {
-  width: 42px;
-  height: 42px;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 27px;
-  font-weight: 800;
-}
-
-.top-menu {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 64px;
-  flex: 1;
-}
-
-.top-menu button {
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 18px;
-  font-weight: 800;
-  cursor: pointer;
-  position: relative;
-}
-
-.top-menu button.active {
-  color: #fff;
-}
-
-.top-menu button.active::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 128px;
-  height: 4px;
-  border-radius: 999px 999px 0 0;
-  background: #69c9ff;
-  box-shadow: 0 0 14px rgba(105, 201, 255, 0.7);
-}
-
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.time-icon,
-.user-icon {
-  font-size: 24px;
-}
-
-.current-time {
-  margin-right: 36px;
-}
-
-.bell {
-  margin-left: 28px;
-  position: relative;
-  font-size: 23px;
-}
-
-.bell span {
-  position: absolute;
-  right: -8px;
-  top: -11px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #ff2e2e;
-  color: #fff;
-  font-size: 11px;
-  line-height: 18px;
-  text-align: center;
 }
 
 .page-body {
@@ -1236,10 +1134,6 @@ tbody tr:nth-child(even) {
 
 
 @media (max-width: 1500px) {
-  .top-menu {
-    gap: 38px;
-  }
-
   .content-area {
     grid-template-columns: minmax(0, 1fr) 420px;
   }
@@ -1262,8 +1156,5 @@ tbody tr:nth-child(even) {
     grid-template-columns: 1fr;
   }
 
-  .top-menu {
-    gap: 22px;
-  }
 }
 </style>
