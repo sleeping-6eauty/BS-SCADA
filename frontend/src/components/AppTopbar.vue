@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted, onUnmounted, ref } from 'vue'
 import logoImage from '@/assets/logo.png'
 
 defineProps({
@@ -16,6 +17,35 @@ const menuItems = [
   { label: '수명 관리', to: '/life' },
   { label: '사용자 관리', to: '/admin/permission' },
 ]
+
+const currentTime = ref('')
+let timerId
+
+const pad = (value) => String(value).padStart(2, '0')
+
+const formatDateTime = (date) => {
+  const year = date.getFullYear()
+  const month = pad(date.getMonth() + 1)
+  const day = pad(date.getDate())
+  const hours = pad(date.getHours())
+  const minutes = pad(date.getMinutes())
+  const seconds = pad(date.getSeconds())
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
+const updateCurrentTime = () => {
+  currentTime.value = formatDateTime(new Date())
+}
+
+onMounted(() => {
+  updateCurrentTime()
+  timerId = window.setInterval(updateCurrentTime, 1000)
+})
+
+onUnmounted(() => {
+  window.clearInterval(timerId)
+})
 </script>
 
 <template>
@@ -41,7 +71,7 @@ const menuItems = [
     </nav>
 
     <div class="top-actions">
-      <div class="time">◷ 2024-05-24 10:30:45</div>
+      <div class="time">◷ {{ currentTime }}</div>
       <div class="admin">👤 관리자</div>
       <button class="bell" type="button">🔔<span>2</span></button>
     </div>
