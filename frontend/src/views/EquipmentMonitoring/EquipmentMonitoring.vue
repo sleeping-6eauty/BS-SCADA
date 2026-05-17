@@ -174,7 +174,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
-import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../api/mockEquipmentApi'
+import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
 
 const statusText = {
   running: '가동',

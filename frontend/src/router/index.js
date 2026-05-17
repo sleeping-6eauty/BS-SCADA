@@ -4,7 +4,7 @@ import Signup from '../views/auth/Signup.vue'
 import Dashboard from '../views/dashboard/Dashboard.vue'
 import Permission from '../views/admin/Permission.vue'
 import EquipmentLife from '../life/EquipmentLife.vue'
-import EquipmentMonitoring from '../views/EquipmentMonitoring.vue'
+import EquipmentMonitoring from '../views/EquipmentMonitoring/EquipmentMonitoring.vue'
 import EquipmentDetail from '../views/EquipmentDetail/EquipmentDetail.vue'
 
 const routes = [
