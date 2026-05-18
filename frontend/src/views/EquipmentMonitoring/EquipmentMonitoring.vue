@@ -16,7 +16,7 @@
           :class="{ active: activeView === 'list' }"
           @click="activeView = 'list'"
         >
-          설비 현황 목록
+          설비 목록
         </button>
       </nav>
 
@@ -24,7 +24,11 @@
         <section v-if="activeView === 'layout'" class="content-panel line-layout-section">
           <div class="panel-header">
             <div class="title-wrap">
-              <h2>라인 레이아웃 <span>(차체 용접 공정)</span></h2>
+              <h2>차체 공정 레이아웃</h2>
+              <span class="title-tooltip" tabindex="0" aria-label="공정 내 설비 위치와 가동 상태를 확인할 수 있습니다.">
+                ?
+                <em>공정 내 설비 위치와 가동 상태를 확인할 수 있습니다.</em>
+              </span>
             </div>
 
             <div class="legend-wrap">
@@ -102,7 +106,7 @@
 
         <section v-else class="content-panel table-section">
           <div class="table-header">
-            <div class="table-title">설비 현황 목록</div>
+            <div class="table-title">설비 목록</div>
             <label class="table-search">
               <span>⌕</span>
               <input v-model="equipmentSearch" type="search" placeholder="설비명, 라인, 유형, 상태 검색" />
@@ -158,73 +162,74 @@
 
       <aside class="side-panel">
         <section class="info-card detail-card">
-          <div class="side-header">
-            <h3>설비 상세 정보</h3>
-            <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
-          </div>
+          <template v-if="selectedEquipment">
+            <div class="side-header">
+              <h3>설비 상세 정보</h3>
+              <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
+            </div>
 
-          <div class="equipment-summary">
-            <div class="summary-icon">{{ (selectedEquipment?.layoutType ?? selectedEquipment?.type ?? 'EQ').toUpperCase() }}</div>
-            <div>
-              <h4>{{ selectedEquipment?.name ?? '-' }}</h4>
-              <span class="side-status" :class="selectedEquipment?.status">
-                {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
-              </span>
+            <div class="equipment-summary">
+              <div>
+                <h4>{{ selectedEquipment?.name ?? '-' }}</h4>
+                <span class="side-status" :class="selectedEquipment?.status">
+                  {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <dl class="detail-list">
-            <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
-            <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
-            <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
-            <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
-            <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
-          </dl>
+            <dl class="detail-list">
+              <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
+              <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
+              <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
+              <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
+              <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
+            </dl>
 
-          <h4 class="sub-title">주요 데이터</h4>
-          <div class="metric-grid">
-            <div class="metric-box">
-              <span>가동 상태</span>
-              <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
+            <h4 class="sub-title">주요 데이터</h4>
+            <div class="metric-grid">
+              <div class="metric-box">
+                <span>가동 상태</span>
+                <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
+              </div>
+              <div class="metric-box">
+                <span>가동 시간</span>
+                <strong>{{ runningTime }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor1" class="metric-box">
+                <span>{{ currentSensorData.sensor1.label }}</span>
+                <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor2" class="metric-box">
+                <span>{{ currentSensorData.sensor2.label }}</span>
+                <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor3" class="metric-box">
+                <span>{{ currentSensorData.sensor3.label }}</span>
+                <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor4" class="metric-box">
+                <span>{{ currentSensorData.sensor4.label }}</span>
+                <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
+              </div>
             </div>
-            <div class="metric-box">
-              <span>가동 시간</span>
-              <strong>{{ runningTime }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor1" class="metric-box">
-              <span>{{ currentSensorData.sensor1.label }}</span>
-              <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor2" class="metric-box">
-              <span>{{ currentSensorData.sensor2.label }}</span>
-              <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor3" class="metric-box">
-              <span>{{ currentSensorData.sensor3.label }}</span>
-              <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor4" class="metric-box">
-              <span>{{ currentSensorData.sensor4.label }}</span>
-              <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
-            </div>
-          </div>
 
-          <div class="recent-alarm-section">
-            <div class="side-header compact">
-              <h4 class="sub-title">최근 알람</h4>
-              <button type="button" @click="goToAlarmPage">더보기 ›</button>
+            <div class="recent-alarm-section">
+              <div class="side-header compact">
+                <h4 class="sub-title">최근 알람</h4>
+                <button type="button" @click="goToAlarmPage">더보기 ›</button>
+              </div>
+              <ul class="recent-alarm-list">
+                <li v-for="alarm in recentAlarms" :key="alarm.id">
+                  <span class="alarm-mark" :class="alarm.level">!</span>
+                  <div>
+                    <strong>{{ alarm.title }}</strong>
+                    <small>{{ alarm.time }}</small>
+                  </div>
+                  <em :class="alarm.level">{{ alarm.label }}</em>
+                </li>
+              </ul>
             </div>
-            <ul class="recent-alarm-list">
-              <li v-for="alarm in recentAlarms" :key="alarm.id">
-                <span class="alarm-mark" :class="alarm.level">!</span>
-                <div>
-                  <strong>{{ alarm.title }}</strong>
-                  <small>{{ alarm.time }}</small>
-                </div>
-                <em :class="alarm.level">{{ alarm.label }}</em>
-              </li>
-            </ul>
-          </div>
+          </template>
         </section>
       </aside>
     </main>
@@ -241,7 +246,7 @@ const router = useRouter()
 const activeView = ref('layout')
 const equipmentSearch = ref('')
 const currentPage = ref(1)
-const rowsPerPage = 25
+const rowsPerPage = 10
 
 const statusText = {
   running: '가동',
@@ -345,7 +350,7 @@ const equipment = reactive({
 })
 
 const layoutItems = ref([])
-const selectedEquipment = ref({ id: null, name: '설비 선택 대기', status: 'unknown', type: 'robot', zone: '', line: '' })
+const selectedEquipment = ref(null)
 const latestLog = reactive({
   data: null,
   loading: false,
@@ -472,11 +477,6 @@ onMounted(async () => {
         }
       })
     )
-    
-    // 첫 번째 설비 선택
-    if (layoutItems.value.length > 0) {
-      selectedEquipment.value = layoutItems.value[0]
-    }
   } catch (err) {
     equipment.error = err.message
     console.error('Failed to fetch equipment list:', err)
@@ -574,7 +574,7 @@ const currentSensorData = computed(() => {
 .page-body {
   height: calc(100vh - 70px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) 340px;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   padding: 10px 12px 12px;
@@ -657,6 +657,7 @@ const currentSensorData = computed(() => {
   gap: 8px;
   min-width: 0;
   flex: 0 0 auto;
+  justify-content: flex-start;
 }
 
 .section-icon {
@@ -674,11 +675,51 @@ h2 {
   font-size: 20px;
   font-weight: 950;
   white-space: nowrap;
+  text-align: left;
 }
 
 h2 span {
   color: #52647a;
   font-weight: 700;
+}
+
+.title-tooltip {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 20px;
+  border: 1px solid #b9c6d8;
+  border-radius: 50%;
+  color: #48617f;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: help;
+}
+
+.title-tooltip em {
+  position: absolute;
+  left: 0;
+  top: 28px;
+  z-index: 20;
+  width: 300px;
+  display: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #fff;
+  background: #08234d;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.title-tooltip:hover em,
+.title-tooltip:focus em {
+  display: block;
 }
 
 .legend-wrap {
@@ -1046,26 +1087,27 @@ table {
   width: 100%;
   min-width: 760px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 th {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px;
+  padding: 11px 10px;
   background: #f3f7fc;
   color: #38536f;
-  font-weight: 800;
+  font-weight: 900;
   text-align: center;
   border-bottom: 1px solid #e2eaf5;
 }
 
 td {
-  padding: 7px 8px;
+  padding: 12px 10px;
   text-align: center;
   color: #24405f;
   border-bottom: 1px solid #edf2f8;
+  font-weight: 800;
 }
 
 tbody tr:hover {
@@ -1091,8 +1133,8 @@ tbody tr {
   height: 22px;
   padding: 0 9px;
   border-radius: 7px;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .status-pill.running,
@@ -1174,8 +1216,8 @@ tbody tr {
 }
 
 .side-header h3 {
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 20px;
+  font-weight: 950;
 }
 
 .side-header button {
@@ -1194,21 +1236,9 @@ tbody tr {
 .equipment-summary {
   display: flex;
   align-items: center;
-  gap: 14px;
   margin-top: 18px;
   padding-bottom: 16px;
   border-bottom: 1px solid #edf2f8;
-}
-
-.summary-icon {
-  width: 46px;
-  height: 46px;
-  flex: 0 0 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: #f1f6fc;
-  font-size: 24px;
 }
 
 .equipment-summary h4 {
@@ -1249,8 +1279,8 @@ tbody tr {
 
 .sub-title {
   margin: 18px 0 12px;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 20px;
+  font-weight: 950;
 }
 
 .metric-grid {
