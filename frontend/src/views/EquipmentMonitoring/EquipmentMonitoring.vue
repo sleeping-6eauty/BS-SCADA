@@ -1,13 +1,12 @@
-<template>
+﻿<template>
   <div class="equipment-page">
-    <AppTopbar activeMenu="설비 현황" />
+    <AppTopbar activeMenu="?ㅻ퉬 ?꾪솴" />
 
     <main class="page-body">
       <section class="left-column">
         <section class="content-panel line-layout-section">
           <div class="panel-header">
             <div class="title-wrap">
-              <div class="section-icon">⚙</div>
               <h2>라인 레이아웃 <span>(차체 용접 공정)</span></h2>
             </div>
 
@@ -16,31 +15,70 @@
               <span class="legend idle"></span> 대기 (Idle)
               <span class="legend stop"></span> 정지 (Stop)
               <span class="legend unknown"></span> 알 수 없음 (Unknown)
-              <select class="filter-select">
-                <option>전체</option>
-                <option>Zone A</option>
-                <option>Zone B</option>
-                <option>Zone C</option>
-              </select>
             </div>
           </div>
 
           <div class="layout-card">
-            <div class="layout-grid">
-              <button
-                v-for="item in layoutItems"
-                :key="item.id"
-                class="equipment-node"
-                :class="item.status"
-                @click="selectedEquipment = item"
-              >
-                <div class="node-top">
-                  <span class="node-zone">{{ item.zone }}</span>
-                  <span class="node-line">{{ item.line }}</span>
+            <div class="layout-matrix">
+              <div class="line-axis"></div>
+              <div v-for="zone in zoneColumns" :key="zone.key" class="zone-heading">
+                <strong>{{ zone.title }}</strong>
+                <span>{{ zone.name }}</span>
+                <em>({{ zone.code }})</em>
+              </div>
+
+              <template v-for="line in productionLines" :key="line.key">
+                <div class="line-heading">
+                  <span>{{ line.no }}</span>
+                  <strong>{{ line.label }}</strong>
                 </div>
-                <div class="node-icon">{{ item.type === 'robot' ? '🦾' : '♙' }}</div>
-                <strong>{{ item.name }}</strong>
-              </button>
+
+                <div
+                  v-for="(station, stationIndex) in line.stations"
+                  :key="station.id"
+                  class="station-slot"
+                >
+                  <button
+                    type="button"
+                    class="equipment-node"
+                    :class="[station.status, station.type]"
+                    @click="selectLayoutStation(station)"
+                  >
+                    <span class="node-icon" aria-hidden="true">
+                      <svg v-if="station.type === 'plf'" viewBox="0 0 80 58">
+                        <path d="M10 44h60M16 44V24l14 8 12-14 22 16v10M22 27l36 13M16 20l48 14M30 32v12M48 30v14M64 34v10" />
+                      </svg>
+                      <svg v-else-if="station.type === 'jig'" viewBox="0 0 80 58">
+                        <path d="M14 37h52M20 36l7-14h27l8 14M28 22l10-8h16l8 8M26 38v8M58 38v8M18 46h10M52 46h10M12 30h8M60 30h8" />
+                      </svg>
+                      <svg v-else-if="station.type === 'rob'" viewBox="0 0 80 58">
+                        <path d="M22 45h28M29 45V34M26 34l-9 8M33 30l16-16M47 13l12 11M59 24l7-7M53 30l8 6" />
+                        <circle cx="31" cy="29" r="8" />
+                        <circle cx="50" cy="13" r="7" />
+                      </svg>
+                      <svg v-else-if="station.type === 'wld'" viewBox="0 0 80 58">
+                        <path d="M20 42l24-24 12 12-24 24-12-12ZM42 20l8-8M54 18l9-3M57 27h10M52 35l7 7M35 24l11 11" />
+                      </svg>
+                      <svg v-else-if="station.type === 'slr'" viewBox="0 0 80 58">
+                        <path d="M18 44h46M25 40h26M38 40V18M48 38V14M55 36V20M31 30c2-9 9-15 18-16M30 34h-8M58 18h6M22 36v8M64 34v10" />
+                      </svg>
+                      <svg v-else viewBox="0 0 80 58">
+                        <path d="M18 20h44v28H18zM28 20l4-7h16l4 7" />
+                        <circle cx="40" cy="34" r="10" />
+                      </svg>
+                    </span>
+                    <strong>{{ station.label }}</strong>
+                    <span class="node-status">{{ layoutStatusText[station.status] }}</span>
+                  </button>
+
+                  <div v-if="stationIndex < line.stations.length - 1" class="conveyor-link" aria-hidden="true">
+                    <span>CNV</span>
+                    <div class="conveyor-track">
+                      <i v-for="index in 4" :key="index"></i>
+                    </div>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </section>
@@ -62,7 +100,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in equipmentRows" :key="row.id">
+                <tr v-for="row in equipmentRows" :key="row.id" @click="selectEquipmentRow(row)">
                   <td>{{ row.name }}</td>
                   <td>{{ row.line }}</td>
                   <td>{{ row.typeName }}</td>
@@ -77,19 +115,15 @@
 
           <div class="pagination">
             <span>전체 {{ equipmentRows.length }}건</span>
-            <select>
-              <option>10개씩</option>
-              <option>20개씩</option>
-            </select>
             <div class="page-buttons">
-              <button>‹</button>
+              <button type="button">‹</button>
               <button class="current">1</button>
               <button>2</button>
               <button>3</button>
               <button>4</button>
               <button>5</button>
               <button>...</button>
-              <button>›</button>
+              <button type="button">›</button>
             </div>
           </div>
         </section>
@@ -99,15 +133,15 @@
         <section class="info-card detail-card">
           <div class="side-header">
             <h3>설비 상세 정보</h3>
-            <button>더보기 ›</button>
+            <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
           </div>
 
           <div class="equipment-summary">
-            <div class="summary-icon">{{ selectedEquipment?.type === 'robot' ? '🦾' : '♙' }}</div>
+            <div class="summary-icon">{{ (selectedEquipment?.layoutType ?? selectedEquipment?.type ?? 'EQ').toUpperCase() }}</div>
             <div>
               <h4>{{ selectedEquipment?.name ?? '-' }}</h4>
               <span class="side-status" :class="selectedEquipment?.status">
-                ● {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
+                {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
               </span>
             </div>
           </div>
@@ -116,7 +150,7 @@
             <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
             <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
             <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
-            <div><dt>설비 유형</dt><dd>{{ selectedEquipment?.type === 'robot' ? '용접 로봇' : '너트러너' }}</dd></div>
+            <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
             <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
           </dl>
 
@@ -155,43 +189,101 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
 import AppTopbar from '../../components/AppTopbar.vue'
+
+const router = useRouter()
 
 const statusText = {
   running: '가동',
   idle: '대기',
   stop: '정지',
-  unknown: '알 수 없음'
+  unknown: '알 수 없음',
 }
 
 const alarmText = {
   normal: '정상',
   warning: '경고',
-  danger: '위험'
+  danger: '위험',
 }
 
-// 설비별 센서 데이터 타입 (로봇 vs 너트러너)
+const layoutStatusText = {
+  running: '가동',
+  idle: '대기',
+  stop: '정지',
+  unknown: '알 수 없음',
+}
+
+const zoneColumns = [
+  { key: 'zone-a', title: 'ZONE A', name: '패널투입장치', code: 'PLF' },
+  { key: 'zone-b', title: 'ZONE B', name: '차체지그', code: 'JIG' },
+  { key: 'zone-c', title: 'ZONE C', name: '산업용로봇', code: 'ROB' },
+  { key: 'zone-d', title: 'ZONE D', name: '점용접기', code: 'WLD' },
+  { key: 'zone-e', title: 'ZONE E', name: '실러도포장비', code: 'SLR' },
+  { key: 'zone-f', title: 'ZONE F', name: '비전검사기', code: 'VSI' },
+]
+
+const equipmentTypeLabels = {
+  plf: '패널투입장치',
+  jig: '차체지그',
+  rob: '산업용로봇',
+  wld: '점용접기',
+  slr: '실러도포장비',
+  vsi: '비전검사기',
+  robot: '산업용로봇',
+  nutrunner: '너트러너',
+}
+
+const createStation = (lineNo, type, zone, status) => ({
+  id: `${type}-${lineNo}`,
+  label: `${type.toUpperCase()}-${lineNo}`,
+  type,
+  status: status ?? 'running',
+  zone,
+  line: `Line ${lineNo}`,
+  manufacturer: 'BS-SCADA',
+  equipment_id: `${type}-${lineNo}`,
+  equipment_name: `${type.toUpperCase()}-${lineNo}`,
+  line_no: `Line ${lineNo}`,
+})
+
+const createLineStations = (lineNo, statuses) => [
+  createStation(lineNo, 'plf', 'Zone A', statuses.plf),
+  createStation(lineNo, 'jig', 'Zone B', statuses.jig),
+  createStation(lineNo, 'rob', 'Zone C', statuses.rob),
+  createStation(lineNo, 'wld', 'Zone D', statuses.wld),
+  createStation(lineNo, 'slr', 'Zone E', statuses.slr),
+  createStation(lineNo, 'vsi', 'Zone F', statuses.vsi),
+]
+
+const productionLines = [
+  { key: 'line-1', no: 1, label: 'Line 1', stations: createLineStations(1, { slr: 'idle' }) },
+  { key: 'line-2', no: 2, label: 'Line 2', stations: createLineStations(2, { rob: 'idle' }) },
+  { key: 'line-3', no: 3, label: 'Line 3', stations: createLineStations(3, { rob: 'stop' }) },
+]
+
+// ?ㅻ퉬蹂??쇱꽌 ?곗씠?????(濡쒕큸 vs ?덊듃?щ꼫)
 const getSensorDisplayLabels = (type) => {
   if (type === 'robot') {
     return {
-      sensor1: { label: '용접전압(DC)', key: 'weld_voltage_dc', unit: 'V' },
-      sensor2: { label: '용접전류(DC)', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '용접속도', key: 'weld_speed', unit: 'm/s' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '?⑹젒?꾩븬(DC)', key: 'weld_voltage_dc', unit: 'V' },
+      sensor2: { label: '?⑹젒?꾨쪟(DC)', key: 'weld_current_dc', unit: 'A' },
+      sensor3: { label: '?⑹젒?띾룄', key: 'weld_speed', unit: 'm/s' },
+      sensor4: { label: '?앹궛 ?섎웾', key: 'production_count', unit: 'EA' },
     }
   } else if (type === 'nutrunner') {
     return {
-      sensor1: { label: '전압(AC)', key: 'weld_voltage_ac', unit: 'V' },
-      sensor2: { label: '전류(AC)', key: 'weld_current_ac', unit: 'A' },
-      sensor3: { label: '토크', key: 'cycle_time', unit: 'Nm' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '?꾩븬(AC)', key: 'weld_voltage_ac', unit: 'V' },
+      sensor2: { label: '?꾨쪟(AC)', key: 'weld_current_ac', unit: 'A' },
+      sensor3: { label: '?좏겕', key: 'cycle_time', unit: 'Nm' },
+      sensor4: { label: '?앹궛 ?섎웾', key: 'production_count', unit: 'EA' },
     }
   }
   return {}
 }
 
-// 상태 데이터
+// ?곹깭 ?곗씠??
 const equipment = reactive({
   list: [],
   loading: false,
@@ -206,10 +298,50 @@ const latestLog = reactive({
 })
 const runningTime = ref('00:00:00')
 
-// 각 설비별 로그 데이터 캐시
+const selectLayoutStation = (station) => {
+  selectedEquipment.value = {
+    id: station.id,
+    name: station.label,
+    status: station.status,
+    type: station.type === 'rob' ? 'robot' : 'nutrunner',
+    zone: station.zone,
+    line: station.line,
+    layoutType: station.type,
+    manufacturer: station.manufacturer,
+    equipment_id: station.equipment_id,
+    equipment_name: station.equipment_name,
+    line_no: station.line_no,
+  }
+}
+
+const selectEquipmentRow = (row) => {
+  selectedEquipment.value = {
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    type: row.rawType,
+    zone: row.zone,
+    line: row.lineNo,
+    layoutType: row.rawType === 'robot' ? 'rob' : 'jig',
+  }
+}
+
+const goToEquipmentDetail = () => {
+  if (!selectedEquipment.value?.id) return
+
+  router.push({
+    path: '/equipment-detail',
+    query: {
+      equipmentId: selectedEquipment.value.id,
+      equipmentName: selectedEquipment.value.name,
+    },
+  })
+}
+
+// 媛??ㅻ퉬蹂?濡쒓렇 ?곗씠??罹먯떆
 const equipmentLogCache = reactive({})
 
-// 테이블 데이터 (선택된 설비가 변경될 때 업데이트됨)
+// ?뚯씠釉??곗씠??(?좏깮???ㅻ퉬媛 蹂寃쎈맆 ???낅뜲?댄듃??
 const equipmentRows = computed(() => {
   if (!equipment.list.length) return []
   
@@ -221,7 +353,10 @@ const equipmentRows = computed(() => {
       id: eq.equipment_id,
       name: eq.equipment_name,
       line: `${eq.zone} - ${eq.line_no}`,
-      typeName: eq.type === 'robot' ? '용접 로봇' : '너트러너',
+      lineNo: eq.line_no,
+      zone: eq.zone,
+      rawType: eq.type,
+      typeName: eq.type === 'robot' ? '?⑹젒 濡쒕큸' : '?덊듃?щ꼫',
       status: status,
       alarm: status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
       runningTime: runningTime.value,
@@ -230,17 +365,17 @@ const equipmentRows = computed(() => {
   })
 })
 
-// 초기 데이터 로드
+// 珥덇린 ?곗씠??濡쒕뱶
 onMounted(async () => {
   try {
     equipment.loading = true
     const equipmentsData = await fetchEquipments()
     equipment.list = equipmentsData
     
-    // 레이아웃 아이템 구성 및 각 설비의 로그 데이터 로드
+    // ?덉씠?꾩썐 ?꾩씠??援ъ꽦 諛?媛??ㅻ퉬??濡쒓렇 ?곗씠??濡쒕뱶
     layoutItems.value = await Promise.all(
       equipmentsData.map(async (eq) => {
-        // 각 설비의 로그 데이터 로드 및 캐시
+        // 媛??ㅻ퉬??濡쒓렇 ?곗씠??濡쒕뱶 諛?罹먯떆
         try {
           const logData = await fetchLatestLog(eq.equipment_id)
           equipmentLogCache[eq.equipment_id] = logData
@@ -259,7 +394,7 @@ onMounted(async () => {
       })
     )
     
-    // 첫 번째 설비 선택
+    // 泥?踰덉㎏ ?ㅻ퉬 ?좏깮
     if (layoutItems.value.length > 0) {
       selectedEquipment.value = layoutItems.value[0]
     }
@@ -271,23 +406,23 @@ onMounted(async () => {
   }
 })
 
-// 선택된 설비가 변경될 때 로그 데이터 로드
+// ?좏깮???ㅻ퉬媛 蹂寃쎈맆 ??濡쒓렇 ?곗씠??濡쒕뱶
 watch(selectedEquipment, async (newEquipment) => {
   if (!newEquipment || !newEquipment.id) return
   
   try {
     latestLog.loading = true
     
-    // 최신 로그 데이터 로드
+    // 理쒖떊 濡쒓렇 ?곗씠??濡쒕뱶
     const logData = await fetchLatestLog(newEquipment.id)
     latestLog.data = logData
     equipmentLogCache[newEquipment.id] = logData
     
-    // 가동 시간 로드
+    // 媛???쒓컙 濡쒕뱶
     const timeData = await fetchEquipmentRunningTime(newEquipment.id)
     runningTime.value = timeData.running_time || '00:00:00'
     
-    // 레이아웃 상태 업데이트
+    // ?덉씠?꾩썐 ?곹깭 ?낅뜲?댄듃
     const layoutItem = layoutItems.value.find(item => item.id === newEquipment.id)
     if (layoutItem) {
       layoutItem.status = logData.status
@@ -299,20 +434,32 @@ watch(selectedEquipment, async (newEquipment) => {
   }
 }, { immediate: true })
 
-// 현재 설비의 상세 정보
+// ?꾩옱 ?ㅻ퉬???곸꽭 ?뺣낫
 const currentEquipmentDetail = computed(() => {
   if (!selectedEquipment.value) return {}
   
   const equipDetail = equipment.list.find(eq => eq.equipment_id === selectedEquipment.value.id)
-  return equipDetail || {}
+  return equipDetail || {
+    equipment_id: selectedEquipment.value.equipment_id ?? selectedEquipment.value.id,
+    equipment_name: selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
+    manufacturer: selectedEquipment.value.manufacturer ?? 'BS-SCADA',
+    zone: selectedEquipment.value.zone,
+    line_no: selectedEquipment.value.line_no ?? selectedEquipment.value.line,
+    type: selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
+  }
 })
 
-// 현재 설비의 센서 데이터 레이블
+const selectedEquipmentTypeLabel = computed(() => {
+  const type = currentEquipmentDetail.value.type ?? selectedEquipment.value?.layoutType ?? selectedEquipment.value?.type
+  return equipmentTypeLabels[type] ?? equipmentTypeLabels[selectedEquipment.value?.type] ?? '-'
+})
+
+// ?꾩옱 ?ㅻ퉬???쇱꽌 ?곗씠???덉씠釉?
 const currentSensorLabels = computed(() => {
   return getSensorDisplayLabels(selectedEquipment.value?.type)
 })
 
-// 현재 설비의 특정 센서 데이터
+// ?꾩옱 ?ㅻ퉬???뱀젙 ?쇱꽌 ?곗씠??
 const currentSensorData = computed(() => {
   if (!latestLog.data) return {}
   
@@ -414,8 +561,8 @@ h4 {
 }
 
 h2 {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 950;
   white-space: nowrap;
 }
 
@@ -473,95 +620,252 @@ h2 span {
 
 .layout-card {
   min-height: 0;
-  padding: 14px;
+  padding: 0;
   border: 1px solid #e1e8f2;
-  border-radius: 18px;
+  border-radius: 12px;
   overflow: hidden;
+  background: #fff;
 }
 
-.layout-grid {
+.layout-matrix {
   height: 100%;
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
-  grid-template-rows: repeat(2, minmax(130px, 1fr));
-  gap: 14px;
-  align-items: stretch;
+  grid-template-columns: 92px repeat(6, minmax(140px, 1fr));
+  grid-template-rows: 92px repeat(3, minmax(150px, 1fr));
+  overflow: auto;
+}
+
+.line-axis,
+.zone-heading,
+.line-heading,
+.station-slot {
+  border-right: 1px solid #e3e9f2;
+  border-bottom: 1px solid #e3e9f2;
+}
+
+.zone-heading {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 5px;
+  color: #09295a;
+  text-align: center;
+  background: #fbfdff;
+}
+
+.zone-heading strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.zone-heading span,
+.zone-heading em {
+  font-style: normal;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.line-heading {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  color: #082d64;
+  background: #fff;
+}
+
+.line-heading span {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(180deg, #083c84, #062d67);
+  box-shadow: 0 7px 15px rgba(4, 37, 88, 0.22);
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.line-heading strong {
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.station-slot {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  padding: 14px;
 }
 
 .equipment-node {
-  min-width: 0;
-  min-height: 0;
   position: relative;
   z-index: 1;
-  padding: 16px;
+  width: 108px;
+  min-height: 132px;
+  padding: 14px 12px 12px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   border: 1.5px solid #d8e4f0;
-  border-radius: 16px;
+  border-radius: 8px;
   background: #fff;
-  box-shadow: 0 8px 22px rgba(22, 56, 99, 0.08);
+  box-shadow: 0 8px 18px rgba(26, 53, 88, 0.06);
   cursor: pointer;
-  overflow: hidden;
 }
 
 .equipment-node strong {
-  font-size: 15px;
-  color: #173251;
+  font-size: 13px;
+  color: #09295a;
   line-height: 1.2;
-}
-
-.node-top {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.node-zone,
-.node-line {
-  font-size: 12px;
-  font-weight: 800;
-  color: #5a6c89;
-}
-
-.node-line {
-  color: #10243f;
+  font-weight: 950;
 }
 
 .node-icon {
-  font-size: clamp(24px, 2.4vw, 32px);
-  line-height: 1;
-  align-self: center;
-  margin-top: 4px;
+  width: 60px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+}
+
+.node-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.node-status {
+  min-width: 48px;
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.conveyor-link {
+  position: absolute;
+  left: calc(50% + 54px);
+  top: 50%;
+  z-index: 2;
+  width: calc(100% - 108px);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.conveyor-link span {
+  color: #58667a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.conveyor-track {
+  position: relative;
+  flex: 1;
+  min-width: 58px;
+  height: 26px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border: 2px solid #8c98a9;
+  background: #f4f7fb;
+}
+
+.conveyor-track::before,
+.conveyor-track::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 24px;
+  border-radius: 5px;
+  background: #7d8797;
+  transform: translateY(-50%);
+}
+
+.conveyor-track::before {
+  left: -6px;
+}
+
+.conveyor-track::after {
+  right: -6px;
+}
+
+.conveyor-track i {
+  border-right: 1px solid #9aa5b5;
+}
+
+.conveyor-track i:last-child {
+  border-right: 0;
 }
 
 .equipment-node.running {
-  border-color: #7fe0b8;
+  border-color: #27bd78;
 }
 
 .equipment-node.running .node-icon,
 .side-status.running {
-  color: #20c985;
+  color: #17b56c;
+}
+
+.equipment-node.running .node-status {
+  color: #11a765;
+  background: #e7f8ef;
 }
 
 .equipment-node.idle {
-  border-color: #ffc46b;
+  border-color: #ffae18;
 }
 
 .equipment-node.idle .node-icon,
 .side-status.idle {
-  color: #ffb435;
+  color: #ffae18;
+}
+
+.equipment-node.idle .node-status {
+  color: #f49a00;
+  background: #fff5e4;
 }
 
 .equipment-node.stop {
-  border-color: #ff8a97;
+  border-color: #ff3030;
 }
 
 .equipment-node.stop .node-icon,
 .side-status.stop {
-  color: #ff4f63;
+  color: #ff3030;
+}
+
+.equipment-node.stop .node-status {
+  color: #ff3030;
+  background: #ffecec;
+}
+
+.equipment-node.unknown {
+  border-color: #a5afbd;
+}
+
+.equipment-node.unknown .node-icon,
+.side-status.unknown {
+  color: #a5afbd;
+}
+
+.equipment-node.unknown .node-status {
+  color: #7d8797;
+  background: #f0f3f7;
 }
 
 .table-section {
@@ -574,7 +878,7 @@ h2 span {
 }
 
 .table-title {
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 900;
   color: #0d386f;
 }
@@ -616,6 +920,10 @@ tbody tr:hover {
   background: #f9fbff;
 }
 
+tbody tr {
+  cursor: pointer;
+}
+
 .status-pill,
 .alarm-pill {
   display: inline-flex;
@@ -648,6 +956,7 @@ tbody tr:hover {
 }
 
 .pagination {
+  position: relative;
   min-height: 30px;
   display: flex;
   align-items: center;
@@ -658,7 +967,9 @@ tbody tr:hover {
 }
 
 .page-buttons {
-  margin-left: auto;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   gap: 8px;
 }
@@ -809,9 +1120,19 @@ tbody tr:hover {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
 
-  .layout-grid {
-    grid-template-columns: repeat(3, minmax(150px, 1fr));
-    grid-template-rows: repeat(3, minmax(110px, 1fr));
+  .layout-matrix {
+    grid-template-columns: 82px repeat(6, minmax(128px, 1fr));
+    grid-template-rows: 86px repeat(3, minmax(136px, 1fr));
+  }
+
+  .equipment-node {
+    width: 96px;
+    min-height: 118px;
+  }
+
+  .conveyor-link {
+    left: calc(50% + 48px);
+    width: calc(100% - 96px);
   }
 }
 
@@ -841,10 +1162,9 @@ tbody tr:hover {
     overflow: visible;
   }
 
-  .layout-grid {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
-    grid-template-rows: none;
-    grid-auto-rows: 150px;
+  .layout-matrix {
+    min-width: 980px;
+    min-height: 620px;
   }
 
   .topbar {
