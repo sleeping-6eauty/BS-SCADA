@@ -56,11 +56,9 @@ public class SecurityConfig {
                         // 로그인한 사용자 확인 API
                         .requestMatchers("/api/auth/me").authenticated()
 
-                        // 사용자 담당 설비 조회를 위한 관리자/매니저 접근
-                        .requestMatchers(HttpMethod.GET, "/api/users/*/equipments").hasAnyRole("ADMIN", "MANAGER")
-                        // 사용자 담당 설비 배정은 관리자만 가능
+                        // 사용자 담당 설비 조회 및 사용자 관리 기능은 관리자만 접근 가능
+                        .requestMatchers(HttpMethod.GET, "/api/users/*/equipments").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/users/*/equipments").hasRole("ADMIN")
-                        // 관리자만 접근 가능
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
 
                         // 로그인한 사용자만 접근 가능
