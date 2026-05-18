@@ -1,25 +1,31 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import AppTopbar from '@/components/AppTopbar.vue'
 
 const selectedUserId = ref('sminee')
 const checkedUserIds = ref(['sminee', 'jkim'])
+const userSearch = ref('')
 const equipSearch = ref('')
-const currentPage = ref(1)
+const isAddingUser = ref(false)
+const isEditingUser = ref(false)
 
-const summaryCards = [
-  { title: '전체 사용자', value: 24, icon: '👤', tone: 'blue' },
-  { title: '관리자', value: 3, icon: '🛡', tone: 'purple' },
-  { title: '운영자', value: 9, icon: '⚙', tone: 'green' },
-  { title: '일반 사용자', value: 12, icon: '👥', tone: 'orange' },
+const roleOptions = [
+  { value: 'admin', label: '관리자' },
+  { value: 'user', label: '일반 사용자' },
 ]
 
-const users = [
+const statusOptions = [
+  { value: 'active', label: '활성' },
+  { value: 'inactive', label: '비활성' },
+  { value: 'pending', label: '대기' },
+]
+
+const users = reactive([
   {
     id: 'sminee',
     name: '이수민',
-    role: 'operator',
-    roleLabel: '운영자',
+    role: 'user',
+    roleLabel: '일반 사용자',
     equipment: 'Conveyor D1',
     status: 'active',
     statusLabel: '활성',
@@ -41,7 +47,47 @@ const users = [
     avatarTone: 'purple',
     assignedEquipIds: ['robot-a1', 'nutrunner-b2'],
   },
-]
+])
+
+const createEmptyUser = () => ({
+  id: '',
+  name: '',
+  role: 'user',
+  roleLabel: '일반 사용자',
+  equipment: '',
+  status: 'active',
+  statusLabel: '활성',
+  lastLogin: '-',
+  email: '',
+  avatarTone: 'green',
+  assignedEquipIds: [],
+})
+
+const createDraftFromUser = (user) => {
+  if (!user) return createEmptyUser()
+
+  return {
+    id: user.id,
+    name: user.name,
+    role: user.role,
+    roleLabel: user.roleLabel,
+    equipment: user.equipment,
+    status: user.status,
+    statusLabel: user.statusLabel,
+    lastLogin: user.lastLogin,
+    email: user.email,
+    avatarTone: user.avatarTone,
+    assignedEquipIds: [...user.assignedEquipIds],
+  }
+}
+
+const newUser = reactive(createDraftFromUser(users[0]))
+
+const summaryCards = computed(() => [
+  { title: '전체 사용자', value: users.length, icon: '👥', tone: 'blue' },
+  { title: '관리자', value: users.filter((user) => user.role === 'admin').length, icon: '🛡️', tone: 'purple' },
+  { title: '일반 사용자', value: users.filter((user) => user.role === 'user').length, icon: '👤', tone: 'orange' },
+])
 
 const allEquipment = [
   { id: 'robot-a1', name: 'Robot A1' },
@@ -56,14 +102,40 @@ const selectedUser = computed(
   () => users.find((u) => u.id === selectedUserId.value) ?? users[0],
 )
 
+const filteredUsers = computed(() => {
+  const query = userSearch.value.trim().toLowerCase()
+  if (!query) return users
+
+  return users.filter((user) =>
+    [
+      user.name,
+      user.id,
+      user.roleLabel,
+      user.equipment,
+      user.statusLabel,
+      user.email,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .includes(query),
+  )
+})
+
 const filteredEquipmentOptions = computed(() => {
   const q = equipSearch.value.trim().toLowerCase()
   if (!q) return allEquipment
   return allEquipment.filter((e) => e.name.toLowerCase().includes(q))
 })
 
+const isDetailEditable = computed(() => isAddingUser.value || isEditingUser.value)
+
+const activeAssignedEquipIds = computed(() => {
+  if (isDetailEditable.value) return newUser.assignedEquipIds
+  return selectedUser.value?.assignedEquipIds ?? []
+})
+
 const selectedEquipTags = computed(() =>
-  allEquipment.filter((e) => selectedUser.value.assignedEquipIds.includes(e.id)),
+  allEquipment.filter((e) => activeAssignedEquipIds.value.includes(e.id)),
 )
 
 const selectedCount = computed(() => checkedUserIds.value.length)
@@ -79,33 +151,197 @@ const toggleUserCheck = (id) => {
 }
 
 const toggleAllUsers = (event) => {
-  checkedUserIds.value = event.target.checked ? users.map((u) => u.id) : []
+  checkedUserIds.value = event.target.checked ? filteredUsers.value.map((u) => u.id) : []
 }
 
 const selectUser = (id) => {
+  isAddingUser.value = false
+  isEditingUser.value = false
   selectedUserId.value = id
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+  equipSearch.value = ''
 }
 
-const isEquipAssigned = (equipId) => selectedUser.value.assignedEquipIds.includes(equipId)
+const editUser = (id = selectedUserId.value) => {
+  isAddingUser.value = false
+  isEditingUser.value = true
+  selectedUserId.value = id
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+  equipSearch.value = ''
+}
+
+const resetNewUser = () => {
+  Object.assign(newUser, createEmptyUser())
+}
+
+const startAddUser = () => {
+  resetNewUser()
+  equipSearch.value = ''
+  isAddingUser.value = true
+  isEditingUser.value = true
+}
+
+const cancelAddUser = () => {
+  isAddingUser.value = false
+  isEditingUser.value = false
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+}
+
+const isEquipAssigned = (equipId) => activeAssignedEquipIds.value.includes(equipId)
 
 const toggleEquip = (equipId) => {
-  const user = users.find((u) => u.id === selectedUserId.value)
-  if (!user) return
-  if (user.assignedEquipIds.includes(equipId)) {
-    user.assignedEquipIds = user.assignedEquipIds.filter((id) => id !== equipId)
+  if (!isDetailEditable.value) return
+
+  if (newUser.assignedEquipIds.includes(equipId)) {
+    newUser.assignedEquipIds = newUser.assignedEquipIds.filter((id) => id !== equipId)
   } else {
-    user.assignedEquipIds.push(equipId)
+    newUser.assignedEquipIds.push(equipId)
   }
-  user.equipment = allEquipment
-    .filter((e) => user.assignedEquipIds.includes(e.id))
-    .map((e) => e.name)
-    .join(', ')
 }
 
 const removeEquipTag = (equipId) => {
-  if (selectedUser.value.assignedEquipIds.includes(equipId)) {
+  if (activeAssignedEquipIds.value.includes(equipId)) {
     toggleEquip(equipId)
   }
+}
+
+const canCreateUser = computed(() =>
+  newUser.name.trim() !== '' &&
+  newUser.id.trim() !== '' &&
+  newUser.email.trim() !== '' &&
+  !users.some((user) => user.id === newUser.id.trim()),
+)
+
+const saveNewUser = () => {
+  if (!canCreateUser.value) return
+
+  const role = roleOptions.find((option) => option.value === newUser.role) ?? roleOptions[1]
+  const status = statusOptions.find((option) => option.value === newUser.status) ?? statusOptions[0]
+  const assignedEquipIds = [...newUser.assignedEquipIds]
+
+  users.push({
+    id: newUser.id.trim(),
+    name: newUser.name.trim(),
+    role: role.value,
+    roleLabel: role.label,
+    equipment: allEquipment
+      .filter((equipment) => assignedEquipIds.includes(equipment.id))
+      .map((equipment) => equipment.name)
+      .join(', '),
+    status: status.value,
+    statusLabel: status.label,
+    lastLogin: '-',
+    email: newUser.email.trim(),
+    avatarTone: role.value === 'admin' ? 'purple' : 'green',
+    assignedEquipIds,
+  })
+
+  selectedUserId.value = newUser.id.trim()
+  checkedUserIds.value = [...checkedUserIds.value, newUser.id.trim()]
+  isAddingUser.value = false
+  isEditingUser.value = false
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+}
+
+const canSaveUser = computed(() => {
+  const id = newUser.id.trim()
+
+  return (
+    newUser.name.trim() !== '' &&
+    id !== '' &&
+    newUser.email.trim() !== '' &&
+    users.every((user) => user.id === selectedUserId.value || user.id !== id)
+  )
+})
+
+const saveSelectedUser = () => {
+  if (!canSaveUser.value) return
+
+  const user = users.find((item) => item.id === selectedUserId.value)
+  if (!user) return
+
+  const role = roleOptions.find((option) => option.value === newUser.role) ?? roleOptions[1]
+  const status = statusOptions.find((option) => option.value === newUser.status) ?? statusOptions[0]
+  const assignedEquipIds = [...newUser.assignedEquipIds]
+  const nextId = newUser.id.trim()
+
+  user.id = nextId
+  user.name = newUser.name.trim()
+  user.role = role.value
+  user.roleLabel = role.label
+  user.status = status.value
+  user.statusLabel = status.label
+  user.email = newUser.email.trim()
+  user.equipment = allEquipment
+    .filter((equipment) => assignedEquipIds.includes(equipment.id))
+    .map((equipment) => equipment.name)
+    .join(', ')
+  user.assignedEquipIds = assignedEquipIds
+  user.avatarTone = role.value === 'admin' ? 'purple' : 'green'
+
+  checkedUserIds.value = checkedUserIds.value.map((id) => (id === selectedUserId.value ? nextId : id))
+  selectedUserId.value = nextId
+  isEditingUser.value = false
+  Object.assign(newUser, createDraftFromUser(user))
+}
+
+const deleteUsersByIds = (ids) => {
+  if (ids.length === 0) return
+
+  for (let index = users.length - 1; index >= 0; index -= 1) {
+    if (ids.includes(users[index].id)) {
+      users.splice(index, 1)
+    }
+  }
+
+  checkedUserIds.value = checkedUserIds.value.filter((id) => !ids.includes(id))
+
+  if (users.length === 0) {
+    selectedUserId.value = ''
+    isAddingUser.value = true
+    isEditingUser.value = true
+    resetNewUser()
+    return
+  }
+
+  if (!users.some((user) => user.id === selectedUserId.value)) {
+    selectedUserId.value = users[0].id
+  }
+
+  isAddingUser.value = false
+  isEditingUser.value = false
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+}
+
+const deleteCheckedUsers = () => {
+  deleteUsersByIds([...checkedUserIds.value])
+}
+
+const deleteSelectedUser = () => {
+  if (!selectedUser.value) return
+  deleteUsersByIds([selectedUser.value.id])
+}
+
+const handleSave = () => {
+  if (isAddingUser.value) {
+    saveNewUser()
+  } else {
+    saveSelectedUser()
+  }
+}
+
+const refreshUsers = () => {
+  userSearch.value = ''
+  equipSearch.value = ''
+  isAddingUser.value = false
+  isEditingUser.value = false
+
+  if (!selectedUser.value && users.length > 0) {
+    selectedUserId.value = users[0].id
+  }
+
+  checkedUserIds.value = users.map((user) => user.id)
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
 }
 </script>
 
@@ -114,13 +350,6 @@ const removeEquipTag = (equipId) => {
     <AppTopbar active-menu="사용자 관리" />
 
     <main class="content">
-      <header class="page-head">
-        <div>
-          <h1>사용자 관리</h1>
-          <p>사용자 계정과 권한을 관리하고 담당 설비를 할당합니다.</p>
-        </div>
-      </header>
-
       <div class="main-layout">
         <div class="left-column">
           <section class="summary-grid">
@@ -136,12 +365,14 @@ const removeEquipTag = (equipId) => {
           <section class="panel table-panel">
           <div class="action-bar">
             <div class="action-buttons">
-              <button type="button" class="btn primary">+ 사용자 추가</button>
-              <button type="button" class="btn danger-outline">🗑 사용자 삭제</button>
-              <button type="button" class="btn outline">🛡 권한 변경</button>
-              <button type="button" class="btn outline">🔗 설비 할당</button>
+              <button type="button" class="btn primary" @click="startAddUser">+ 사용자 추가</button>
+              <button type="button" class="btn danger-outline" @click="deleteCheckedUsers">🗑 사용자 삭제</button>
             </div>
-            <button type="button" class="refresh-btn" title="새로고침">↻</button>
+            <label class="user-search">
+              <span>⌕</span>
+              <input v-model="userSearch" type="search" placeholder="이름, 아이디, 역할, 담당 설비 검색" />
+            </label>
+            <button type="button" class="refresh-btn" title="새로고침" @click="refreshUsers">↻</button>
           </div>
 
           <div class="table-wrap">
@@ -151,7 +382,7 @@ const removeEquipTag = (equipId) => {
                   <th class="col-check">
                     <input
                       type="checkbox"
-                      :checked="checkedUserIds.length === users.length"
+                      :checked="filteredUsers.length > 0 && filteredUsers.every((user) => isUserChecked(user.id))"
                       @change="toggleAllUsers"
                     />
                   </th>
@@ -160,13 +391,12 @@ const removeEquipTag = (equipId) => {
                   <th>역할</th>
                   <th>담당 설비</th>
                   <th>상태</th>
-                  <th>최근 로그인</th>
                   <th>관리</th>
                 </tr>
               </thead>
               <tbody>
                 <tr
-                  v-for="user in users"
+                  v-for="user in filteredUsers"
                   :key="user.id"
                   :class="{ selected: selectedUserId === user.id }"
                   @click="selectUser(user.id)"
@@ -183,34 +413,32 @@ const removeEquipTag = (equipId) => {
                   <td><span class="role-badge" :class="user.role">{{ user.roleLabel }}</span></td>
                   <td class="equip-cell">{{ user.equipment }}</td>
                   <td><span class="status-badge" :class="user.status">{{ user.statusLabel }}</span></td>
-                  <td>{{ user.lastLogin }}</td>
                   <td class="manage-cell" @click.stop>
-                    <button type="button" class="icon-btn edit" title="수정">✎</button>
-                    <button type="button" class="icon-btn delete" title="삭제">🗑</button>
+                    <button type="button" class="icon-btn edit" title="수정" @click="editUser(user.id)">✎</button>
+                    <button type="button" class="icon-btn delete" title="삭제" @click="deleteUsersByIds([user.id])">🗑</button>
                   </td>
+                </tr>
+                <tr v-if="filteredUsers.length === 0">
+                  <td colspan="7" class="empty-row">검색 결과가 없습니다.</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div class="table-footer">
-            <span>선택된 사용자 {{ selectedCount }}명 | 전체 {{ users.length }}건</span>
+            <span>선택된 사용자 {{ selectedCount }}명 | 전체 {{ filteredUsers.length }}건</span>
             <div class="pagination">
               <button type="button" class="active">1</button>
             </div>
-            <select class="filter-select small">
-              <option>10 / 페이지</option>
-            </select>
           </div>
           </section>
         </div>
 
         <aside class="panel side-panel">
-          <h2>사용자 상세 및 설비 할당</h2>
+          <h2>사용자 상세</h2>
 
           <div class="profile-block">
-            <div class="avatar" :class="selectedUser.avatarTone">👤</div>
-            <dl class="profile-list">
+            <dl v-if="!isDetailEditable" class="profile-list">
               <div><dt>이름</dt><dd>{{ selectedUser.name }}</dd></div>
               <div><dt>아이디</dt><dd>{{ selectedUser.id }}</dd></div>
               <div>
@@ -222,6 +450,40 @@ const removeEquipTag = (equipId) => {
                 <dd><span class="status-badge" :class="selectedUser.status">{{ selectedUser.statusLabel }}</span></dd>
               </div>
               <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
+            </dl>
+            <dl v-else class="profile-list form-list">
+              <div>
+                <dt>이름</dt>
+                <dd><input v-model="newUser.name" type="text" placeholder="이름 입력" /></dd>
+              </div>
+              <div>
+                <dt>아이디</dt>
+                <dd><input v-model="newUser.id" type="text" placeholder="아이디 입력" /></dd>
+              </div>
+              <div>
+                <dt>역할</dt>
+                <dd>
+                  <select v-model="newUser.role">
+                    <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+                      {{ role.label }}
+                    </option>
+                  </select>
+                </dd>
+              </div>
+              <div>
+                <dt>상태</dt>
+                <dd>
+                  <select v-model="newUser.status">
+                    <option v-for="status in statusOptions" :key="status.value" :value="status.value">
+                      {{ status.label }}
+                    </option>
+                  </select>
+                </dd>
+              </div>
+              <div>
+                <dt>이메일</dt>
+                <dd><input v-model="newUser.email" type="email" placeholder="email@company.com" /></dd>
+              </div>
             </dl>
           </div>
 
@@ -240,6 +502,7 @@ const removeEquipTag = (equipId) => {
               <input
                 type="checkbox"
                 :checked="isEquipAssigned(equip.id)"
+                :disabled="!isDetailEditable"
                 @change="toggleEquip(equip.id)"
               />
               <span>{{ equip.name }}</span>
@@ -250,14 +513,30 @@ const removeEquipTag = (equipId) => {
           <div class="tag-list">
             <span v-for="tag in selectedEquipTags" :key="tag.id" class="equip-tag">
               {{ tag.name }}
-              <button type="button" @click="removeEquipTag(tag.id)">×</button>
+              <button v-if="isDetailEditable" type="button" @click="removeEquipTag(tag.id)">×</button>
             </span>
           </div>
 
           <div class="side-actions">
-            <button type="button" class="btn navy full">할당 저장</button>
-            <button type="button" class="btn outline full">사용자 수정</button>
-            <button type="button" class="btn danger-outline full">🗑 사용자 삭제</button>
+            <button
+              v-if="!isDetailEditable"
+              type="button"
+              class="btn outline full"
+              @click="editUser()"
+            >
+              수정
+            </button>
+            <button
+              v-else
+              type="button"
+              class="btn navy full"
+              :disabled="isAddingUser ? !canCreateUser : !canSaveUser"
+              @click="handleSave"
+            >
+              저장
+            </button>
+            <button v-if="isDetailEditable" type="button" class="btn outline full" @click="cancelAddUser">취소</button>
+            <button v-if="!isAddingUser" type="button" class="btn danger-outline full" @click="deleteSelectedUser">🗑 사용자 삭제</button>
           </div>
         </aside>
       </div>
@@ -269,32 +548,24 @@ const removeEquipTag = (equipId) => {
 .permission-page {
   min-width: 1280px;
   min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   background: #f5f7fb;
 }
 
 .content {
-  padding: 22px 32px 30px;
-}
-
-.page-head h1 {
-  margin: 0 0 6px;
-  font-size: 28px;
-  font-weight: 950;
-  color: #0d2448;
-}
-
-.page-head p {
-  margin: 0 0 18px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #6b7c94;
+  height: calc(100vh - 78px);
+  padding: 16px 32px 30px;
+  box-sizing: border-box;
 }
 
 .main-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 442px;
   gap: 16px;
   align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
 .left-column {
@@ -302,16 +573,17 @@ const removeEquipTag = (equipId) => {
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  min-height: 0;
 }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
 
 .summary-card {
-  height: 118px;
+  height: 142px;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -366,8 +638,49 @@ const removeEquipTag = (equipId) => {
 
 .action-buttons {
   display: flex;
+  flex-shrink: 0;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.action-buttons .btn {
+  min-width: 130px;
+  height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+.user-search {
+  flex: 1;
+  min-width: 240px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #d8e1ed;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.user-search span {
+  color: #6b7c94;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.user-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  color: #0d2448;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.user-search input::placeholder {
+  color: #9aa8bc;
 }
 
 .btn {
@@ -407,9 +720,14 @@ const removeEquipTag = (equipId) => {
   width: 100%;
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .refresh-btn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border: 1px solid #d8e1ed;
   border-radius: 6px;
   background: #fff;
@@ -471,6 +789,11 @@ const removeEquipTag = (equipId) => {
   text-align: left;
   font-weight: 950;
   color: #0d2448;
+}
+
+.empty-row {
+  color: #6b7c94;
+  font-weight: 850;
 }
 
 .equip-cell {
@@ -544,6 +867,7 @@ const removeEquipTag = (equipId) => {
 }
 
 .table-footer {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -554,6 +878,9 @@ const removeEquipTag = (equipId) => {
 }
 
 .pagination {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   gap: 8px;
 }
@@ -589,47 +916,52 @@ const removeEquipTag = (equipId) => {
 .side-panel {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  padding-top: 14px;
+  padding-bottom: 14px;
 }
 
 .table-panel {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 .side-panel h2 {
-  margin: 0 0 16px;
+  margin: 0 0 10px;
   font-size: 18px;
   font-weight: 950;
   color: #0d2448;
 }
 
 .side-panel h3 {
-  margin: 18px 0 10px;
-  font-size: 14px;
+  margin: 12px 0 8px;
+  font-size: 18px;
   font-weight: 950;
   color: #0d2448;
 }
 
+.side-panel .tag-list + .side-actions,
+.side-panel h3 + .tag-list {
+  margin-top: 0;
+}
+
+.side-panel h3:nth-of-type(2) {
+  font-size: 14px;
+}
+
 .profile-block {
-  display: flex;
-  gap: 14px;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #edf1f6;
 }
-
-.avatar {
-  width: 72px;
-  height: 72px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-size: 32px;
-  background: #e1f6ef;
-}
-
-.avatar.green { background: #e1f6ef; }
-.avatar.purple { background: #efe8ff; }
 
 .profile-list {
   margin: 0;
@@ -642,7 +974,7 @@ const removeEquipTag = (equipId) => {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  padding: 5px 0;
+  padding: 4px 0;
   font-size: 13px;
 }
 
@@ -658,15 +990,32 @@ const removeEquipTag = (equipId) => {
   color: #0d2448;
 }
 
+.form-list input,
+.form-list select {
+  width: 100%;
+  height: 34px;
+  border: 1px solid #d8e1ed;
+  border-radius: 6px;
+  padding: 0 10px;
+  color: #0d2448;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.form-list input::placeholder {
+  color: #9aa8bc;
+}
+
 .equip-search {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 32px;
   padding: 0 12px;
   border: 1px solid #d8e1ed;
   border-radius: 6px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .equip-search input {
@@ -681,7 +1030,7 @@ const removeEquipTag = (equipId) => {
 .equip-check-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
+  gap: 6px 8px;
 }
 
 .equip-check {
@@ -699,6 +1048,7 @@ const removeEquipTag = (equipId) => {
   flex-wrap: wrap;
   gap: 8px;
   min-height: 32px;
+  margin-bottom: 12px;
 }
 
 .equip-tag {
@@ -727,7 +1077,11 @@ const removeEquipTag = (equipId) => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 20px;
+  margin-top: 10px;
+}
+
+.side-actions .btn {
+  height: 34px;
 }
 
 @media (max-width: 1400px) {

@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="equipment-page">
-    <AppTopbar activeMenu="?ㅻ퉬 ?꾪솴" />
+    <AppTopbar active-menu="설비 현황" />
 
     <main class="page-body">
       <section class="left-column">
@@ -191,7 +191,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
-import AppTopbar from '../../components/AppTopbar.vue'
+import AppTopbar from '@/components/AppTopbar.vue'
 
 const router = useRouter()
 
@@ -488,7 +488,6 @@ const currentSensorData = computed(() => {
   overflow: hidden;
   background: #f4f7fb;
   color: #0f2748;
-  font-family: Pretendard, Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -1167,8 +1166,5 @@ tbody tr {
     min-height: 620px;
   }
 
-  .topbar {
-    overflow-x: auto;
-  }
 }
 </style>
