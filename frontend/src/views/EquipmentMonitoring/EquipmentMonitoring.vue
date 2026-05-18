@@ -1,6 +1,6 @@
 <template>
   <div class="equipment-page">
-    <AppTopbar activeMenu="설비 현황" />
+    <AppTopbar active-menu="설비 현황" />
 
     <main class="page-body">
       <section class="left-column">
@@ -156,7 +156,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
-import AppTopbar from '../../components/AppTopbar.vue'
+import AppTopbar from '@/components/AppTopbar.vue'
 
 const statusText = {
   running: '가동',
@@ -341,7 +341,6 @@ const currentSensorData = computed(() => {
   overflow: hidden;
   background: #f4f7fb;
   color: #0f2748;
-  font-family: Pretendard, Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   display: flex;
   flex-direction: column;
 }
@@ -847,8 +846,5 @@ tbody tr:hover {
     grid-auto-rows: 150px;
   }
 
-  .topbar {
-    overflow-x: auto;
-  }
 }
 </style>
