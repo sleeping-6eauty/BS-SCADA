@@ -1,4 +1,4 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.dto;
 
 public record AlarmCountResponse(
 	String equipmentId,

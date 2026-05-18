@@ -1,16 +1,16 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.service;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
-final class DateTimeParser {
+public final class DateTimeParser {
 
 	private DateTimeParser() {
 	}
 
-	static LocalDateTime parse(String value) {
+	public static LocalDateTime parse(String value) {
 		if (value == null || value.isBlank()) {
 			return null;
 		}

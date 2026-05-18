@@ -47,6 +47,11 @@ class BackendApplicationTests {
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data[0].equipmentId").exists());
 
+		mockMvc.perform(get("/api/alarms/RBT-A1"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data[0].equipmentId").value("RBT-A1"));
+
 		mockMvc.perform(get("/api/alarms/detail/RBT-A1"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))

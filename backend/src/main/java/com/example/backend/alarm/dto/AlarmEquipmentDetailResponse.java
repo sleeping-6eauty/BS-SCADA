@@ -1,4 +1,4 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.dto;
 
 import java.util.List;
 

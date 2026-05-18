@@ -1,8 +1,13 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.mapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.example.backend.alarm.dto.Alarm;
+import com.example.backend.alarm.dto.AlarmLogEntry;
+import com.example.backend.alarm.dto.AlarmLogRow;
+import com.example.backend.alarm.dto.AlarmStatisticsItem;
+import com.example.backend.alarm.dto.EquipmentInfo;
 import org.apache.ibatis.annotations.Arg;
 import org.apache.ibatis.annotations.ConstructorArgs;
 import org.apache.ibatis.annotations.Mapper;

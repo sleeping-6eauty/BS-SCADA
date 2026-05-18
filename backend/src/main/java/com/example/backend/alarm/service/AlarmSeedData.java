@@ -1,7 +1,9 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
+import com.example.backend.alarm.dto.Alarm;
 
 final class AlarmSeedData {
 

@@ -1,4 +1,4 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.controller;
 
 import java.util.List;
 
@@ -10,6 +10,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.backend.alarm.dto.Alarm;
+import com.example.backend.alarm.dto.AlarmCountResponse;
+import com.example.backend.alarm.dto.AlarmEquipmentDetailResponse;
+import com.example.backend.alarm.dto.AlarmLogEntry;
+import com.example.backend.alarm.dto.AlarmLogRow;
+import com.example.backend.alarm.dto.AlarmMemoRequest;
+import com.example.backend.alarm.dto.AlarmMemoResponse;
+import com.example.backend.alarm.dto.AlarmQuery;
+import com.example.backend.alarm.dto.AlarmStatisticsResponse;
+import com.example.backend.alarm.service.AlarmService;
+import com.example.backend.alarm.service.DateTimeParser;
 import com.example.backend.common.ApiResponse;
 import com.example.backend.common.PageResponse;
 
@@ -54,6 +65,11 @@ public class AlarmController {
 		@RequestParam(defaultValue = "7") int days
 	) {
 		return new ApiResponse<>(true, "alarm count", alarmService.countByEquipment(equipmentId, days));
+	}
+
+	@GetMapping("/{equipmentId}")
+	public ApiResponse<List<AlarmLogEntry>> getAlarmLogsByEquipment(@PathVariable String equipmentId) {
+		return new ApiResponse<>(true, "alarm logs by equipment", alarmService.findAlarmLogsByEquipment(equipmentId));
 	}
 
 	@GetMapping("/detail/{equipmentId}")

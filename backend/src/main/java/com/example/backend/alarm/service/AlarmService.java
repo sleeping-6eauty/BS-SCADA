@@ -1,4 +1,4 @@
-package com.example.backend.alarm;
+package com.example.backend.alarm.service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -12,6 +12,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import com.example.backend.alarm.dto.Alarm;
+import com.example.backend.alarm.dto.AlarmCountResponse;
+import com.example.backend.alarm.dto.AlarmEquipmentDetailResponse;
+import com.example.backend.alarm.dto.AlarmLogEntry;
+import com.example.backend.alarm.dto.AlarmLogRow;
+import com.example.backend.alarm.dto.AlarmMemoRequest;
+import com.example.backend.alarm.dto.AlarmMemoResponse;
+import com.example.backend.alarm.dto.AlarmQuery;
+import com.example.backend.alarm.dto.AlarmStatisticsItem;
+import com.example.backend.alarm.dto.AlarmStatisticsResponse;
+import com.example.backend.alarm.dto.EquipmentInfo;
+import com.example.backend.alarm.mapper.AlarmMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -103,6 +115,18 @@ public class AlarmService {
 			: alarmMapper.countByEquipmentWithinDays(equipmentId, normalizedDays);
 
 		return new AlarmCountResponse(equipmentId, normalizedDays, count);
+	}
+
+	public List<AlarmLogEntry> findAlarmLogsByEquipment(String equipmentId) {
+		if (alarmMapper != null) {
+			return alarmMapper.findAlarmLogsByEquipment(equipmentId);
+		}
+
+		return fallbackAlarms.values().stream()
+			.filter(alarm -> matchesEquipment(alarm, equipmentId))
+			.sorted(Comparator.comparing(Alarm::timestamp, Comparator.nullsLast(Comparator.reverseOrder())))
+			.map(this::toFallbackLogEntry)
+			.toList();
 	}
 
 	public List<AlarmLogRow> findAlarmLogRows() {
