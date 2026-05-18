@@ -440,6 +440,7 @@ const refreshUsers = () => {
           <div class="profile-block">
             <dl v-if="!isDetailEditable" class="profile-list">
               <div><dt>이름</dt><dd>{{ selectedUser.name }}</dd></div>
+              <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
               <div>
                 <dt>역할</dt>
                 <dd><span class="role-badge" :class="selectedUser.role">{{ selectedUser.roleLabel }}</span></dd>
@@ -448,7 +449,6 @@ const refreshUsers = () => {
                 <dt>상태</dt>
                 <dd><span class="status-badge" :class="selectedUser.status">{{ selectedUser.statusLabel }}</span></dd>
               </div>
-              <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
             </dl>
             <dl v-else class="profile-list form-list">
               <div>
