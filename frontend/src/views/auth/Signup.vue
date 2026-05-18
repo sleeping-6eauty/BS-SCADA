@@ -1,115 +1,53 @@
 <script setup>
-const features = [
-  {
-    title: '실시간 모니터링',
-    description: '설비 상태 실시간 확인',
-    icon: 'shield',
-  },
-  {
-    title: '알람 관리',
-    description: '신속한 알람 감지 및 처리',
-    icon: 'bell',
-  },
-  {
-    title: '데이터 분석',
-    description: '정확한 데이터로 효율적 운영',
-    icon: 'chart',
-  },
-]
+import loginBg from '@/assets/login-bg.png'
+import loginLeftLogo from '@/assets/login-left.png'
+import loginRightLogo from '@/assets/login-right.png'
+
+const loginBgSrc = loginBg
+const loginLeftLogoSrc = loginLeftLogo
+const loginRightLogoSrc = loginRightLogo
 </script>
 
 <template>
   <main class="auth-page signup-page">
     <section class="brand-panel" aria-label="설비 알람 관리 시스템 소개">
+      <div class="brand-bg" :style="{ backgroundImage: `url(${loginBgSrc})` }" aria-hidden="true"></div>
       <div class="brand-copy">
-        <div class="line-robot mark-light" aria-hidden="true">
-          <svg viewBox="0 0 80 80" role="img">
-            <path d="M18 64h38M24 56h26M36 52V39M29 39l-9 9M39 35l16-10M54 24l8 9" />
-            <circle cx="35" cy="31" r="8" />
-            <circle cx="60" cy="22" r="7" />
-            <circle cx="66" cy="37" r="4" />
-            <path d="M24 56h26v8H24zM18 48l6 8M20 48h10M43 31l10-6M48 16l7 6" />
-          </svg>
-        </div>
+        <img class="brand-logo-left" :src="loginLeftLogoSrc" alt="로그인 로고" aria-hidden="true" />
         <h1>설비 알람 관리 시스템</h1>
         <p>실시간 모니터링으로 설비의 안정성과 효율성을 높입니다.</p>
       </div>
-
-      <div class="factory-scene" aria-hidden="true">
-        <div class="grid-floor"></div>
-        <div class="robot-arm">
-          <span class="joint joint-a"></span>
-          <span class="joint joint-b"></span>
-          <span class="joint joint-c"></span>
-          <span class="arm arm-a"></span>
-          <span class="arm arm-b"></span>
-          <span class="arm arm-c"></span>
-          <span class="base"></span>
-        </div>
-        <div class="conveyor">
-          <span v-for="index in 9" :key="index"></span>
-        </div>
-        <div class="box box-a"></div>
-        <div class="box box-b"></div>
-        <div class="tower tower-a"></div>
-        <div class="tower tower-b"></div>
-        <div class="console"></div>
-      </div>
-
-      <ul class="feature-row">
-        <li v-for="feature in features" :key="feature.title">
-          <span class="feature-icon" :class="feature.icon" aria-hidden="true"></span>
-          <strong>{{ feature.title }}</strong>
-          <small>{{ feature.description }}</small>
-        </li>
-      </ul>
     </section>
 
     <section class="form-panel" aria-label="회원가입">
       <form class="auth-card">
         <div class="form-heading">
-          <div class="line-robot mark-blue" aria-hidden="true">
-            <svg viewBox="0 0 80 80">
-              <path d="M18 64h38M24 56h26M36 52V39M29 39l-9 9M39 35l16-10M54 24l8 9" />
-              <circle cx="35" cy="31" r="8" />
-              <circle cx="60" cy="22" r="7" />
-              <circle cx="66" cy="37" r="4" />
-              <path d="M24 56h26v8H24zM18 48l6 8M20 48h10M43 31l10-6M48 16l7 6" />
-            </svg>
-          </div>
+          <img class="brand-logo-right" :src="loginRightLogoSrc" alt="회원가입 로고" aria-hidden="true" />
           <h2>회원가입</h2>
           <p>계정을 생성하여 시스템을 이용하세요.</p>
         </div>
 
-        <label class="field-label full" for="name">이름</label>
-        <div class="input-wrap full">
+        <label class="field-label" for="name">이름</label>
+        <div class="input-wrap">
           <span class="input-icon user" aria-hidden="true"></span>
           <input id="name" type="text" placeholder="이름을 입력하세요" autocomplete="name" />
         </div>
 
-        <div class="field-grid">
-          <label class="field-label" for="user-id">아이디</label>
-          <label class="field-label" for="email">이메일</label>
-
-          <div class="input-wrap">
-            <span class="input-icon user" aria-hidden="true"></span>
-            <input id="user-id" type="text" placeholder="아이디를 입력하세요" autocomplete="username" />
-          </div>
-          <div class="input-wrap">
-            <span class="input-icon mail" aria-hidden="true"></span>
-            <input id="email" type="email" placeholder="이메일을 입력하세요" autocomplete="email" />
-          </div>
+        <label class="field-label" for="email">이메일</label>
+        <div class="input-wrap">
+          <span class="input-icon mail" aria-hidden="true"></span>
+          <input id="email" type="email" placeholder="이메일을 입력하세요" autocomplete="email" />
         </div>
 
-        <label class="field-label full" for="password">비밀번호</label>
-        <div class="input-wrap full">
+        <label class="field-label" for="password">비밀번호</label>
+        <div class="input-wrap password-wrap">
           <span class="input-icon lock" aria-hidden="true"></span>
           <input id="password" type="password" placeholder="비밀번호를 입력하세요" autocomplete="new-password" />
           <button class="ghost-icon eye" type="button" aria-label="비밀번호 보기"></button>
         </div>
 
-        <label class="field-label full" for="password-confirm">비밀번호 확인</label>
-        <div class="input-wrap full">
+        <label class="field-label" for="password-confirm">비밀번호 확인</label>
+        <div class="input-wrap password-wrap">
           <span class="input-icon lock" aria-hidden="true"></span>
           <input
             id="password-confirm"
@@ -118,32 +56,6 @@ const features = [
             autocomplete="new-password"
           />
           <button class="ghost-icon eye" type="button" aria-label="비밀번호 확인 보기"></button>
-        </div>
-
-        <div class="field-grid">
-          <label class="field-label" for="equipment">담당 설비</label>
-          <label class="field-label" for="role">직책</label>
-
-          <div class="input-wrap select-wrap">
-            <span class="input-icon equipment" aria-hidden="true"></span>
-            <select id="equipment">
-              <option>담당 설비를 선택하세요</option>
-              <option>Robot A1</option>
-              <option>Nutrunner B2</option>
-              <option>Conveyor D1</option>
-            </select>
-            <span class="chevron" aria-hidden="true"></span>
-          </div>
-          <div class="input-wrap select-wrap">
-            <span class="input-icon briefcase" aria-hidden="true"></span>
-            <select id="role">
-              <option>직책을 선택하세요</option>
-              <option>관리자</option>
-              <option>운영자</option>
-              <option>일반 사용자</option>
-            </select>
-            <span class="chevron" aria-hidden="true"></span>
-          </div>
         </div>
 
         <button class="primary-button" type="submit">회원가입</button>
@@ -210,6 +122,16 @@ const features = [
   pointer-events: none;
 }
 
+.brand-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: saturate(0.8) brightness(0.75);
+  z-index: 0;
+}
+
 .brand-copy {
   position: relative;
   z-index: 1;
@@ -217,27 +139,13 @@ const features = [
   text-align: center;
 }
 
-.line-robot {
-  display: inline-grid;
-  place-items: center;
-}
-
-.line-robot svg {
-  width: 78px;
-  height: 78px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.mark-light {
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.mark-blue {
-  color: var(--blue);
+.brand-logo-left,
+.brand-logo-right {
+  width: 92px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 24px;
 }
 
 .brand-copy h1 {
@@ -512,19 +420,42 @@ const features = [
 
 .auth-card {
   width: min(780px, 100%);
-  padding: 44px 54px 42px;
+  padding: 32px 54px 28px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 18px 50px rgba(20, 42, 83, 0.13);
 }
 
+.password-wrap {
+  position: relative;
+}
+
+.ghost-icon.eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #4a6d9f;
+  background: rgba(7, 65, 150, 0.06);
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ghost-icon.eye:hover {
+  background: rgba(7, 65, 150, 0.12);
+}
+
 .form-heading {
-  margin-bottom: 26px;
+  margin-bottom: 20px;
   text-align: center;
 }
 
 .form-heading h2 {
-  margin: 18px 0 8px;
+  margin: 14px 0 6px;
   font-size: 38px;
   font-weight: 950;
   letter-spacing: 0;
@@ -546,7 +477,7 @@ const features = [
 
 .field-label {
   display: block;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: #0a1b4d;
   font-size: 17px;
   font-weight: 900;
@@ -560,8 +491,8 @@ const features = [
 .input-wrap {
   display: flex;
   align-items: center;
-  height: 58px;
-  margin-bottom: 24px;
+  height: 54px;
+  margin-bottom: 16px;
   padding: 0 16px;
   border: 1px solid #ccd7e7;
   border-radius: 8px;
@@ -759,8 +690,8 @@ const features = [
 
 .primary-button {
   width: 100%;
-  height: 62px;
-  margin-top: 8px;
+  height: 60px;
+  margin-top: 4px;
   border: 0;
   border-radius: 8px;
   color: #fff;
@@ -776,7 +707,7 @@ const features = [
 }
 
 .auth-link {
-  margin: 22px 0 0;
+  margin: 14px 0 0;
   color: #7584a3;
   text-align: center;
   font-size: 17px;

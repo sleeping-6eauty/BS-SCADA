@@ -114,7 +114,7 @@ const togglePasswordVisibility = () => {
   inset: 0;
   background-size: cover;
   background-position: center;
-  opacity: 0.22;
+  opacity: 0.45;
   filter: saturate(0.8) brightness(0.75);
   z-index: 0;
 }
