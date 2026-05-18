@@ -7,14 +7,14 @@
         <button
           type="button"
           :class="{ active: activeView === 'layout' }"
-          @click="activeView = 'layout'"
+          @click="setActiveView('layout')"
         >
           라인 레이아웃
         </button>
         <button
           type="button"
           :class="{ active: activeView === 'list' }"
-          @click="activeView = 'list'"
+          @click="setActiveView('list')"
         >
           설비 목록
         </button>
@@ -109,7 +109,7 @@
             <div class="table-title">설비 목록</div>
             <label class="table-search">
               <span>⌕</span>
-              <input v-model="equipmentSearch" type="search" placeholder="설비명, 라인, 유형, 상태 검색" />
+              <input v-model="equipmentSearch" type="search" placeholder="설비명, 위치, 유형, 상태 검색" />
             </label>
           </div>
 
@@ -118,7 +118,7 @@
               <thead>
                 <tr>
                   <th>설비명</th>
-                  <th>라인</th>
+                  <th>위치</th>
                   <th>설비 유형</th>
                   <th>상태</th>
                   <th>알람 상태</th>
@@ -161,23 +161,24 @@
       </section>
 
       <aside class="side-panel">
-        <section class="info-card detail-card">
-          <template v-if="selectedEquipment">
+        <template v-if="selectedEquipment">
+          <section class="info-card detail-card">
             <div class="side-header">
               <h3>설비 상세 정보</h3>
               <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
             </div>
 
-            <div class="equipment-summary">
+            <div class="detail-header">
+              <span class="detail-icon">{{ selectedEquipmentIcon }}</span>
               <div>
-                <h4>{{ selectedEquipment?.name ?? '-' }}</h4>
-                <span class="side-status" :class="selectedEquipment?.status">
+                <strong>{{ selectedEquipment?.name ?? '-' }}</strong>
+                <span class="status-badge" :class="selectedEquipment?.status">
                   {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
                 </span>
               </div>
             </div>
 
-            <dl class="detail-list">
+            <dl class="info-list">
               <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
               <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
               <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
@@ -186,7 +187,7 @@
             </dl>
 
             <h4 class="sub-title">주요 데이터</h4>
-            <div class="metric-grid">
+            <div class="metrics-grid">
               <div class="metric-box">
                 <span>가동 상태</span>
                 <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
@@ -212,25 +213,25 @@
                 <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
               </div>
             </div>
+          </section>
 
-            <div class="recent-alarm-section">
-              <div class="side-header compact">
-                <h4 class="sub-title">최근 알람</h4>
-                <button type="button" @click="goToAlarmPage">더보기 ›</button>
-              </div>
-              <ul class="recent-alarm-list">
-                <li v-for="alarm in recentAlarms" :key="alarm.id">
-                  <span class="alarm-mark" :class="alarm.level">!</span>
-                  <div>
-                    <strong>{{ alarm.title }}</strong>
-                    <small>{{ alarm.time }}</small>
-                  </div>
-                  <em :class="alarm.level">{{ alarm.label }}</em>
-                </li>
-              </ul>
+          <section class="info-card alarm-card">
+            <div class="side-header">
+              <h3>최근 알람</h3>
+              <button type="button" @click="goToAlarmPage">더보기 ›</button>
             </div>
-          </template>
-        </section>
+            <ul class="recent-alarm-list">
+              <li v-for="alarm in recentAlarms" :key="alarm.id">
+                <span class="alarm-mark" :class="alarm.level">!</span>
+                <div>
+                  <strong>{{ alarm.title }}</strong>
+                  <small>{{ alarm.time }}</small>
+                </div>
+                <em :class="alarm.level">{{ alarm.label }}</em>
+              </li>
+            </ul>
+          </section>
+        </template>
       </aside>
     </main>
   </div>
@@ -290,9 +291,50 @@ const equipmentTypeLabels = {
   wld: '점용접기',
   slr: '실러도포장비',
   vsi: '비전검사기',
+  cnv: '컨베이어',
   robot: '산업용로봇',
   nutrunner: '너트러너',
 }
+
+const equipmentTypeIcons = {
+  plf: '🏗️',
+  jig: '📐',
+  rob: '🤖',
+  wld: '🔥',
+  slr: '🖌️',
+  vsi: '👁️',
+  cnv: '↔️',
+  robot: '🤖',
+  nutrunner: '📐',
+}
+
+const monitoringEquipmentTypes = [
+  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'Daifuku' },
+  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'Hyundai Wia' },
+  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'ABB' },
+  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'Nachi' },
+  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Nordson' },
+  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'Keyence' },
+  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'BS-SCADA' },
+]
+
+const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeIndex) =>
+  [1, 2, 3].map((sequence, sequenceIndex) => ({
+    id: `${item.code}-${String(sequence).padStart(3, '0')}`,
+    name: `${item.code}-${String(sequence).padStart(3, '0')}`,
+    line: `${item.zone} - Line ${sequence}`,
+    lineNo: `Line ${sequence}`,
+    zone: item.zone,
+    rawType: item.type,
+    typeName: item.label,
+    manufacturer: item.manufacturer,
+    status: ['running', 'running', 'idle', 'running', 'stop', 'running', 'running'][(typeIndex + sequenceIndex) % 7],
+    runningTime:
+      (typeIndex + sequenceIndex) % 5 === 4
+        ? '00:00:00'
+        : `02:${String(10 + typeIndex * 3 + sequenceIndex).padStart(2, '0')}:${String(12 + typeIndex + sequenceIndex * 4).padStart(2, '0')}`,
+  })),
+)
 
 const createStation = (lineNo, type, zone, status) => ({
   id: `${type}-${lineNo}`,
@@ -357,6 +399,16 @@ const latestLog = reactive({
 })
 const runningTime = ref('00:00:00')
 
+const setActiveView = (view) => {
+  if (activeView.value === view) return
+
+  activeView.value = view
+  selectedEquipment.value = null
+  latestLog.data = null
+  latestLog.loading = false
+  runningTime.value = '00:00:00'
+}
+
 const selectLayoutStation = (station) => {
   selectedEquipment.value = {
     id: station.id,
@@ -381,7 +433,11 @@ const selectEquipmentRow = (row) => {
     type: row.rawType,
     zone: row.zone,
     line: row.lineNo,
-    layoutType: row.rawType === 'robot' ? 'rob' : 'jig',
+    layoutType: row.rawType,
+    manufacturer: row.manufacturer,
+    equipment_id: row.id,
+    equipment_name: row.name,
+    line_no: row.lineNo,
   }
 }
 
@@ -398,23 +454,22 @@ const equipmentLogCache = reactive({})
 
 // 테이블 데이터
 const equipmentRows = computed(() => {
-  if (!equipment.list.length) return []
-  
-  return equipment.list.map((eq) => {
-    const cachedLog = equipmentLogCache[eq.equipment_id] || latestLog.data
-    const status = cachedLog?.status || 'unknown'
-    
+  return monitoringEquipmentCatalog.map((eq) => {
+    const cachedLog = equipmentLogCache[eq.id]
+    const status = cachedLog?.status || eq.status
+
     return {
-      id: eq.equipment_id,
-      name: eq.equipment_name,
-      line: `${eq.zone} - ${eq.line_no}`,
-      lineNo: eq.line_no,
+      id: eq.id,
+      name: eq.name,
+      line: eq.line,
+      lineNo: eq.lineNo,
       zone: eq.zone,
-      rawType: eq.type,
-      typeName: eq.type === 'robot' ? '용접 로봇' : '너트러너',
+      rawType: eq.rawType,
+      typeName: eq.typeName,
+      manufacturer: eq.manufacturer,
       status: status,
       alarm: status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
-      runningTime: runningTime.value,
+      runningTime: eq.runningTime,
       updatedAt: cachedLog?.timestamp || '2024-05-24 10:30:45'
     }
   })
@@ -533,6 +588,11 @@ const selectedEquipmentTypeLabel = computed(() => {
   return equipmentTypeLabels[type] ?? equipmentTypeLabels[selectedEquipment.value?.type] ?? '-'
 })
 
+const selectedEquipmentIcon = computed(() => {
+  const type = currentEquipmentDetail.value.type ?? selectedEquipment.value?.layoutType ?? selectedEquipment.value?.type
+  return equipmentTypeIcons[type] ?? equipmentTypeIcons[selectedEquipment.value?.type] ?? '🏗️'
+})
+
 // 현재 설비의 센서 데이터 라벨
 const currentSensorLabels = computed(() => {
   return getSensorDisplayLabels(selectedEquipment.value?.type)
@@ -574,7 +634,7 @@ const currentSensorData = computed(() => {
 .page-body {
   height: calc(100vh - 70px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 442px;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   padding: 10px 12px 12px;
@@ -1199,6 +1259,8 @@ tbody tr {
   min-height: 0;
   height: 100%;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
   overflow: hidden;
 }
 
@@ -1209,10 +1271,14 @@ tbody tr {
 
 .detail-card {
   width: 100%;
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+
+.alarm-card {
+  flex: 0 0 auto;
 }
 
 .side-header h3 {
@@ -1229,8 +1295,88 @@ tbody tr {
   cursor: pointer;
 }
 
-.side-header.compact {
-  margin-top: 16px;
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.detail-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.detail-header strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 950;
+  color: #0d2448;
+  margin-bottom: 6px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.status-badge.running {
+  background: #e1f6ef;
+  color: #12a985;
+}
+
+.status-badge.idle {
+  background: #fff0df;
+  color: #df7922;
+}
+
+.status-badge.stop {
+  background: #ffe7eb;
+  color: #fa2c45;
+}
+
+.status-badge.unknown {
+  background: #f0f3f7;
+  color: #7d8797;
+}
+
+.info-list {
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.info-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f3f6fa;
+}
+
+.info-list dt {
+  margin: 0;
+  font-weight: 800;
+  color: #6b7c94;
+  white-space: nowrap;
+}
+
+.info-list dd {
+  margin: 0;
+  font-weight: 900;
+  color: #0d2448;
+  text-align: right;
+  word-break: keep-all;
 }
 
 .equipment-summary {
@@ -1278,50 +1424,44 @@ tbody tr {
 }
 
 .sub-title {
-  margin: 18px 0 12px;
-  font-size: 20px;
+  margin: 0 0 10px;
+  font-size: 15px;
   font-weight: 950;
+  color: #0d2448;
 }
 
-.metric-grid {
+.metrics-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .metric-box {
   min-width: 0;
-  padding: 12px;
-  border: 1px solid #e3eaf4;
-  border-radius: 9px;
-  background: #fff;
-  box-shadow: 0 3px 10px rgba(32, 57, 92, 0.04);
+  padding: 12px 14px;
+  border: 1px solid #e8edf4;
+  border-radius: 10px;
+  background: #f7f9fc;
 }
 
 .metric-box span {
   display: block;
-  margin-bottom: 5px;
-  color: #7d8898;
-  font-size: 11px;
+  margin-bottom: 6px;
+  color: #6b7c94;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .metric-box strong {
-  color: #243a58;
+  color: #0d2448;
   font-size: 15px;
-  font-weight: 900;
-}
-
-.recent-alarm-section {
-  margin-top: 6px;
-  padding-top: 12px;
-  border-top: 1px solid #edf2f8;
+  font-weight: 950;
 }
 
 .recent-alarm-list {
   display: grid;
   gap: 10px;
-  margin: 0;
+  margin: 12px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1387,7 +1527,7 @@ tbody tr {
 
 @media (max-width: 1200px) {
   .page-body {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) 340px;
   }
 
   .layout-matrix {
