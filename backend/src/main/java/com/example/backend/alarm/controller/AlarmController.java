@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.backend.alarm.dto.Alarm;
 import com.example.backend.alarm.dto.AlarmCountResponse;
+import com.example.backend.alarm.dto.AlarmCreateRequest;
 import com.example.backend.alarm.dto.AlarmEquipmentDetailResponse;
 import com.example.backend.alarm.dto.AlarmLogEntry;
 import com.example.backend.alarm.dto.AlarmLogRow;
@@ -23,6 +25,7 @@ import com.example.backend.alarm.service.AlarmService;
 import com.example.backend.alarm.service.DateTimeParser;
 import com.example.backend.common.ApiResponse;
 import com.example.backend.common.PageResponse;
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/alarms")
@@ -47,6 +50,11 @@ public class AlarmController {
 		return alarmService.findAlarms(
 			new AlarmQuery(equipmentId, status, type, DateTimeParser.parse(from), DateTimeParser.parse(to), page, size)
 		);
+	}
+
+	@PostMapping
+	public ApiResponse<AlarmLogEntry> createAlarm(@Valid @RequestBody AlarmCreateRequest request) {
+		return new ApiResponse<>(true, "alarm created", alarmService.createAlarm(request));
 	}
 
 	@GetMapping("/statistics")

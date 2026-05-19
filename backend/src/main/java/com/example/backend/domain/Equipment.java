@@ -12,6 +12,8 @@ public class Equipment {
     private Float healthScore;
     private Float remainingLife;
     private LocalDate replacementDate;
+    private Integer expectedLifetimeHours;
+    private java.math.BigDecimal accumulatedRunHours;
 
     public String getEquipmentId() {
         return equipmentId;
@@ -83,5 +85,21 @@ public class Equipment {
 
     public void setReplacementDate(LocalDate replacementDate) {
         this.replacementDate = replacementDate;
+    }
+
+    public Integer getExpectedLifetimeHours() {
+        return expectedLifetimeHours;
+    }
+
+    public void setExpectedLifetimeHours(Integer expectedLifetimeHours) {
+        this.expectedLifetimeHours = expectedLifetimeHours;
+    }
+
+    public java.math.BigDecimal getAccumulatedRunHours() {
+        return accumulatedRunHours;
+    }
+
+    public void setAccumulatedRunHours(java.math.BigDecimal accumulatedRunHours) {
+        this.accumulatedRunHours = accumulatedRunHours;
     }
 }

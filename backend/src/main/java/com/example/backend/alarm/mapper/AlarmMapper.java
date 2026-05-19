@@ -10,13 +10,48 @@ import com.example.backend.alarm.dto.AlarmStatisticsItem;
 import com.example.backend.alarm.dto.EquipmentInfo;
 import org.apache.ibatis.annotations.Arg;
 import org.apache.ibatis.annotations.ConstructorArgs;
+import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 @Mapper
 public interface AlarmMapper {
+
+	@Insert("""
+		<script>
+		INSERT INTO alarm_log
+		<trim prefix="(" suffix=")" suffixOverrides=",">
+			<if test="logId != null">
+				log_id,
+			</if>
+			equipment_id,
+			`timestamp`,
+			alarm_type,
+			<if test="alarmMemo != null">
+				alarm_memo,
+			</if>
+			alarm_status
+		</trim>
+		VALUES
+		<trim prefix="(" suffix=")" suffixOverrides=",">
+			<if test="logId != null">
+				#{logId},
+			</if>
+			#{equipmentId},
+			COALESCE(#{timestamp}, CURRENT_TIMESTAMP),
+			#{alarmType},
+			<if test="alarmMemo != null">
+				#{alarmMemo},
+			</if>
+			COALESCE(#{alarmStatus}, 'OPEN')
+		</trim>
+		</script>
+		""")
+	@Options(useGeneratedKeys = true, keyProperty = "alarmId")
+	int insert(AlarmLogEntry alarm);
 
 	@Select("""
 		<script>
@@ -180,7 +215,9 @@ public interface AlarmMapper {
 			cycle_time AS cycleTime,
 			health_score AS healthScore,
 			remaining_life AS remainingLife,
-			replacement_date AS replacementDate
+			replacement_date AS replacementDate,
+			expected_lifetime_hours AS expectedLifetimeHours,
+			accumulated_run_hours AS accumulatedRunHours
 		FROM equipment
 		WHERE equipment_id = #{equipmentId}
 		""")
@@ -194,6 +231,7 @@ public interface AlarmMapper {
 			`timestamp` AS timestamp,
 			alarm_type AS alarmType,
 			alarm_memo AS alarmMemo,
+			alarm_text AS alarmText,
 			alarm_status AS alarmStatus,
 			created_at AS createdAt,
 			updated_at AS updatedAt
@@ -211,6 +249,7 @@ public interface AlarmMapper {
 			`timestamp` AS timestamp,
 			alarm_type AS alarmType,
 			alarm_memo AS alarmMemo,
+			alarm_text AS alarmText,
 			alarm_status AS alarmStatus,
 			created_at AS createdAt,
 			updated_at AS updatedAt
