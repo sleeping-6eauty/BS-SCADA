@@ -12,11 +12,14 @@
         <result property="healthScore" column="health_score" />
         <result property="remainingLife" column="remaining_life" />
         <result property="replacementDate" column="replacement_date" />
+        <result property="expectedLifetimeHours" column="expected_lifetime_hours" />
+        <result property="accumulatedRunHours" column="accumulated_run_hours" />
     </resultMap>
 
     <select id="findEquipmentsByUserId" resultMap="equipmentResultMap" parameterType="long">
         SELECT e.equipment_id, e.equipment_name, e.line_no, e.zone, e.manufacturer,
-               e.cycle_time, e.health_score, e.remaining_life, e.replacement_date
+               e.cycle_time, e.health_score, e.remaining_life, e.replacement_date,
+               e.expected_lifetime_hours, e.accumulated_run_hours
         FROM equipment e
         JOIN user_equipment ue ON e.equipment_id = ue.equipment_id
         WHERE ue.user_id = #{userId}
