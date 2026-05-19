@@ -104,7 +104,7 @@ const alarms = [
 }
 
 .alarm-header h3 {
-  font-size: 28px;
+  font-size: 16px;
   font-weight: 800;
   color: #1e2b5c;
   margin: 0;
@@ -114,7 +114,7 @@ const alarms = [
   border: none;
   background: transparent;
   color: #1e2b5c;
-  font-size: 16px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
   display: flex;
@@ -172,36 +172,36 @@ const alarms = [
 }
 
 .alarm-icon {
-  font-size: 28px;
+  font-size: 20px;
 }
 
 .alarm-content h4 {
-  margin: 0 0 14px;
-  font-size: 24px;
+  margin: 0 0 6px;
+  font-size: 14px;
   font-weight: 800;
   color: #162044;
   line-height: 1.3;
 }
 
 .alarm-content p {
-  margin: 0 0 12px;
-  font-size: 20px;
+  margin: 0 0 4px;
+  font-size: 12px;
   color: #506080;
   font-weight: 600;
 }
 
 .alarm-content span {
-  font-size: 18px;
+  font-size: 11px;
   color: #5f6f92;
   font-weight: 500;
 }
 
 .alarm-badge {
-  min-width: 88px;
-  height: 42px;
-  padding: 0 16px;
-  border-radius: 12px;
-  font-size: 18px;
+  min-width: 60px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -229,13 +229,13 @@ const alarms = [
 
 .view-all-btn {
   width: 100%;
-  height: 68px;
-  margin-top: 28px;
-  border-radius: 16px;
-  border: 2px solid #3b82f6;
+  height: 40px;
+  margin-top: 16px;
+  border-radius: 10px;
+  border: 1px solid #3b82f6;
   background: #ffffff;
   color: #2563eb;
-  font-size: 24px;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
   transition: all 0.2s ease;
