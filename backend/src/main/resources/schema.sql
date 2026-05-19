@@ -15,6 +15,21 @@ CREATE TABLE IF NOT EXISTS alarm_log (
   INDEX idx_alarm_log_timestamp (`timestamp`)
 );
 
+CREATE TABLE IF NOT EXISTS mail_report (
+  mail_id BIGINT NOT NULL AUTO_INCREMENT,
+  alarm_id BIGINT NULL,
+  `timestamp` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+  mail_text TEXT NULL,
+  PRIMARY KEY (mail_id),
+  INDEX idx_mail_report_alarm_id (alarm_id),
+  INDEX idx_mail_report_timestamp (`timestamp`),
+  CONSTRAINT fk_mail_report_alarm_id
+    FOREIGN KEY (alarm_id)
+    REFERENCES alarm_log (alarm_id)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS user_equipment (
   user_id INT NOT NULL,
   equipment_id VARCHAR(50) NOT NULL,
