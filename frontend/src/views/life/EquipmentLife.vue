@@ -1,6 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import AppTopbar from '@/components/AppTopbar.vue'
 
+const router = useRouter()
 const searchQuery = ref('')
 const selectedLine = ref('전체 라인')
 const sortOrder = ref('잔존 수명 낮은 순')
@@ -139,6 +142,10 @@ const setPage = (page) => {
   currentPage.value = Math.min(Math.max(page, 1), totalPages.value)
 }
 
+const goToAlarmPage = () => {
+  router.push('/equipment-alarm')
+}
+
 const lifeColor = (life) => {
   if (life >= 60) return 'green'
   if (life >= 40) return 'yellow'
@@ -150,25 +157,7 @@ const isUrgentDate = (date) => date <= '2024-09-30'
 
 <template>
   <div class="life-page">
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand-icon">⚙</div>
-        <strong>SFaaS 설비 모니터링 시스템</strong>
-      </div>
-      <nav class="gnb">
-        <a>대시보드</a>
-        <a>설비 현황</a>
-        <a>설비 상세</a>
-        <a>알람 관리</a>
-        <a>사용자 관리</a>
-        <a class="active">수명 관리</a>
-      </nav>
-      <div class="top-actions">
-        <div class="time">◷ 2024-05-24 10:30:45</div>
-        <div class="admin">👤 관리자</div>
-        <button class="bell" type="button">🔔<span>4</span></button>
-      </div>
-    </header>
+    <AppTopbar active-menu="수명 관리" />
 
     <main class="content">
       <div class="main-layout">
@@ -253,12 +242,11 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                     <th>상태</th>
                     <th>잔존 수명</th>
                     <th>예상 교체 시기</th>
-                    <th>마지막 업데이트</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="filteredEquipment.length === 0">
-                    <td colspan="7" class="empty-row">검색 결과가 없습니다.</td>
+                    <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
                   </tr>
                   <tr
                     v-for="row in pagedTableRows"
@@ -278,7 +266,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                       <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
                     </td>
                     <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
-                    <td>{{ row.lastUpdate }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -372,7 +359,7 @@ const isUrgentDate = (date) => date <= '2024-09-30'
           <section class="panel alarm-panel">
             <div class="panel-header">
               <h2>최근 알람</h2>
-              <button type="button" class="more-btn">더보기 ›</button>
+              <button type="button" class="more-btn" @click="goToAlarmPage">더보기 ›</button>
             </div>
             <ul class="alarm-list">
               <li v-for="(alarm, idx) in recentAlarms" :key="idx" :class="alarm.level">
@@ -384,7 +371,7 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                 <em :class="alarm.level">{{ alarm.label }}</em>
               </li>
             </ul>
-            <button type="button" class="alarm-more">더보기 ›</button>
+            <button type="button" class="alarm-more" @click="goToAlarmPage">더보기 ›</button>
           </section>
         </aside>
       </div>
@@ -399,110 +386,13 @@ const isUrgentDate = (date) => date <= '2024-09-30'
   background: #f5f7fb;
 }
 
-.topbar {
-  height: 70px;
-  display: flex;
-  align-items: center;
-  background: linear-gradient(90deg, #071f49, #002e68);
-  color: #fff;
-  box-shadow: 0 4px 14px rgba(4, 24, 56, 0.2);
-}
-
-.brand {
-  width: 305px;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 30px;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 19px;
-}
-
-.brand-icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  border-radius: 10px;
-}
-
-.gnb {
-  display: flex;
-  height: 100%;
-}
-
-.gnb a {
-  min-width: 138px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  font-weight: 800;
-  color: rgba(255, 255, 255, 0.9);
-  position: relative;
-  cursor: pointer;
-}
-
-.gnb a.active::after {
-  content: '';
-  position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 0;
-  height: 5px;
-  background: #16c7d8;
-  border-radius: 8px 8px 0 0;
-}
-
-.top-actions {
-  margin-left: auto;
-  height: 100%;
-  display: flex;
-  align-items: center;
-}
-
-.time,
-.admin,
-.bell {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 22px;
-  font-weight: 800;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.bell {
-  position: relative;
-  border: 0;
-  color: #fff;
-  background: transparent;
-  font-size: 22px;
-  cursor: pointer;
-}
-
-.bell span {
-  position: absolute;
-  top: 16px;
-  right: 15px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 999px;
-  background: #ff2d47;
-  color: #fff;
-  font-size: 12px;
-}
-
 .content {
   padding: 22px 32px 30px;
 }
 
 .main-layout {
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 442px;
   gap: 16px;
   align-items: start;
 }
@@ -1113,7 +1003,7 @@ h2 {
 
 @media (max-width: 1400px) {
   .main-layout {
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: 1fr 442px;
   }
 
   .equipment-grid {
@@ -1124,14 +1014,6 @@ h2 {
 @media (max-width: 1280px) {
   .life-page {
     min-width: 1100px;
-  }
-
-  .gnb a {
-    min-width: 116px;
-  }
-
-  .brand {
-    width: 280px;
   }
 }
 </style>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.backend.mapper.UserEquipmentMapper">
+
+    <resultMap id="equipmentResultMap" type="com.example.backend.domain.Equipment">
+        <id property="equipmentId" column="equipment_id" />
+        <result property="equipmentName" column="equipment_name" />
+        <result property="lineNo" column="line_no" />
+        <result property="zone" column="zone" />
+        <result property="manufacturer" column="manufacturer" />
+        <result property="cycleTime" column="cycle_time" />
+        <result property="healthScore" column="health_score" />
+        <result property="remainingLife" column="remaining_life" />
+        <result property="replacementDate" column="replacement_date" />
+        <result property="expectedLifetimeHours" column="expected_lifetime_hours" />
+        <result property="accumulatedRunHours" column="accumulated_run_hours" />
+    </resultMap>
+
+    <select id="findEquipmentsByUserId" resultMap="equipmentResultMap" parameterType="long">
+        SELECT e.equipment_id, e.equipment_name, e.line_no, e.zone, e.manufacturer,
+               e.cycle_time, e.health_score, e.remaining_life, e.replacement_date,
+               e.expected_lifetime_hours, e.accumulated_run_hours
+        FROM equipment e
+        JOIN user_equipment ue ON e.equipment_id = ue.equipment_id
+        WHERE ue.user_id = #{userId}
+        ORDER BY e.equipment_id
+    </select>
+
+    <insert id="assignEquipmentToUser" parameterType="map">
+        INSERT INTO user_equipment (user_id, equipment_id)
+        VALUES (#{userId}, #{equipmentId})
+    </insert>
+
+    <insert id="assignEquipmentsToUser" parameterType="map">
+        INSERT INTO user_equipment (user_id, equipment_id)
+        VALUES
+        <foreach collection="equipmentIds" item="equipmentId" separator=",">
+            (#{userId}, #{equipmentId})
+        </foreach>
+    </insert>
+
+</mapper>
