@@ -5,35 +5,49 @@
     <main class="page-body">
       <!-- Left Sidebar -->
       <aside class="sidebar">
-        <section class="side-card">
-          <h3>설비 선택</h3>
+        <div class="sidebar-cards">
+          <section class="side-card">
+            <h3>설비 선택</h3>
 
-          <button
-            v-for="item in equipmentList"
-            :key="item.name"
-            class="equipment-item"
-            :class="{ selected: item.name === selectedEquipment }"
-            @click="selectedEquipment = item.name"
-          >
-            <span class="equip-icon">{{ item.icon }}</span>
-            <span>{{ item.name }}</span>
-          </button>
-        </section>
+            <div class="equipment-list-scroll">
+              <button
+                v-for="item in equipmentList"
+                :key="item.id"
+                type="button"
+                class="equipment-item"
+                :class="{ selected: item.id === selectedEquipmentId }"
+                @click="selectEquipment(item.id)"
+              >
+                <span class="equip-icon">{{ item.icon }}</span>
+                <span>
+                  <strong>{{ item.name }}</strong>
+                  <small>ㄴ {{ item.id }}</small>
+                </span>
+              </button>
+            </div>
+          </section>
 
-        <section class="side-card assigned-card">
-          <h3>담당 설비 목록</h3>
+          <section class="side-card assigned-card">
+            <h3>담당 설비 목록</h3>
 
-          <button
-            v-for="item in equipmentList"
-            :key="`assigned-${item.name}`"
-            class="equipment-item"
-            :class="{ selected: item.name === selectedEquipment }"
-            @click="selectedEquipment = item.name"
-          >
-            <span class="equip-icon">{{ item.icon }}</span>
-            <span>{{ item.name }}</span>
-          </button>
-        </section>
+            <div class="equipment-list-scroll">
+              <button
+                v-for="item in assignedEquipmentList"
+                :key="`assigned-${item.id}`"
+                type="button"
+                class="equipment-item"
+                :class="{ selected: item.id === selectedEquipmentId }"
+                @click="selectEquipment(item.id)"
+              >
+                <span class="equip-icon">{{ item.icon }}</span>
+                <span>
+                  <strong>{{ item.name }}</strong>
+                  <small>ㄴ {{ item.id }}</small>
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
       </aside>
 
       <!-- Main Content -->
@@ -48,10 +62,10 @@
               </div>
 
               <div class="panel-actions">
-                <select>
-                  <option>일별</option>
-                  <option>주별</option>
-                  <option>월별</option>
+                <select v-model="trendPeriod">
+                  <option value="day">일별</option>
+                  <option value="week">주별</option>
+                  <option value="month">월별</option>
                 </select>
                 <button class="calendar-button">▣</button>
               </div>
@@ -81,7 +95,7 @@
                   </text>
                 </g>
 
-                <polyline class="line-path" :points="linePoints" />
+                <polyline v-if="trendData.length" class="line-path" :points="linePoints" />
 
                 <g v-for="(point, index) in trendData" :key="point.date">
                   <circle
@@ -101,6 +115,9 @@
                     {{ point.date }}
                   </text>
                 </g>
+                <text v-if="!trendData.length" class="empty-chart-text" x="450" y="116">
+                  알람 발생 추이 데이터가 없습니다.
+                </text>
               </svg>
             </div>
           </article>
@@ -114,9 +131,9 @@
               </div>
 
               <div class="panel-actions single">
-                <select>
-                  <option>최근 7일</option>
-                  <option>최근 30일</option>
+                <select v-model.number="countDays">
+                  <option :value="7">최근 7일</option>
+                  <option :value="30">최근 30일</option>
                 </select>
               </div>
             </div>
@@ -169,6 +186,9 @@
                     {{ bar.name }}
                   </text>
                 </g>
+                <text v-if="!frequencyData.length" class="empty-chart-text" x="450" y="106">
+                  설비별 알람 건수 데이터가 없습니다.
+                </text>
               </svg>
             </div>
           </article>
@@ -189,7 +209,6 @@
                   <col style="width: 140px" />
                   <col style="width: 160px" />
                   <col style="width: 110px" />
-                  <col style="width: 110px" />
                   <col style="width: 120px" />
                 </colgroup>
 
@@ -198,22 +217,28 @@
                     <th>발생 시간</th>
                     <th>설비명</th>
                     <th>알람 유형</th>
-                    <th>심각도</th>
                     <th>상태</th>
                     <th>담당자</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  <tr v-for="row in alarmRows" :key="`${row.time}-${row.equipment}`">
+                  <tr v-if="loading">
+                    <td colspan="5">알람 목록을 불러오는 중입니다.</td>
+                  </tr>
+                  <tr v-else-if="alarmRows.length === 0">
+                    <td colspan="5">표시할 알람이 없습니다.</td>
+                  </tr>
+                  <tr
+                    v-for="row in alarmRows"
+                    v-else
+                    :key="row.id"
+                    :class="{ selected: row.id === selectedAlarmId || row.alarmId === selectedAlarmId }"
+                    @click="selectAlarm(row)"
+                  >
                     <td>{{ row.time }}</td>
                     <td>{{ row.equipment }}</td>
                     <td>{{ row.type }}</td>
-                    <td>
-                      <span :class="['badge', row.severity.toLowerCase()]">
-                        {{ row.severity }}
-                      </span>
-                    </td>
                     <td>
                       <span :class="['badge', row.state === '조치중' ? 'progress' : 'done']">
                         {{ row.state }}
@@ -226,22 +251,13 @@
             </div>
 
             <div class="table-footer">
-              <strong>전체 134건</strong>
+              <strong>전체 {{ alarmRows.length }}건</strong>
 
               <div class="pagination">
-                <button>‹</button>
                 <button class="active">1</button>
-                <button>2</button>
-                <button>3</button>
-                <button>4</button>
-                <button>5</button>
-                <button>›</button>
               </div>
 
-              <select>
-                <option>10 / 페이지</option>
-                <option>20 / 페이지</option>
-              </select>
+              <span class="table-hint">실시간 조회</span>
             </div>
           </article>
         </div>
@@ -258,41 +274,30 @@
 
             <div class="detail-content">
               <div class="detail-badges">
-                <span class="badge high">High</span>
-                <span class="badge progress">조치중</span>
+                <span :class="['badge', (detailAlarm?.severity || 'medium').toLowerCase()]">
+                  {{ detailAlarm?.severity || '-' }}
+                </span>
+                <span :class="['badge', detailAlarm?.state === '조치중' ? 'progress' : 'done']">
+                  {{ detailAlarm?.state || '-' }}
+                </span>
               </div>
 
-              <h2>Robot A1 - 모터 과열</h2>
+              <h2>{{ selectedEquipmentName }} - {{ detailAlarm?.type || '알람 상세' }}</h2>
 
               <dl class="summary-list">
                 <div>
                   <dt>발생 시간</dt>
-                  <dd>2024-05-24 10:25:33</dd>
+                  <dd>{{ detailAlarm?.time || '-' }}</dd>
                 </div>
               </dl>
 
               <div class="alarm-info-box">
-                <h4>알람 내용</h4>
+                <h4>알람 및 설비 정보</h4>
 
                 <dl>
-                  <div>
-                    <dt>발생 설명</dt>
-                    <dd>모터 과열 온도가 허용 범위를 초과했습니다.</dd>
-                  </div>
-
-                  <div>
-                    <dt>발생 위치</dt>
-                    <dd>Zone A - Line 1</dd>
-                  </div>
-
-                  <div>
-                    <dt>현재 상태</dt>
-                    <dd>모터 온도: 82.4 °C (상한: 80 °C)</dd>
-                  </div>
-
-                  <div>
-                    <dt>권장 조치</dt>
-                    <dd>모터 냉각 확인 및 부하 점검 필요</dd>
+                  <div v-for="[label, value] in detailRows" :key="label">
+                    <dt>{{ label }}</dt>
+                    <dd>{{ value }}</dd>
                   </div>
                 </dl>
               </div>
@@ -306,6 +311,10 @@
             </div>
 
             <div class="history-memo-wrap">
+              <div v-if="errorMessage" class="error-box">
+                {{ errorMessage }}
+              </div>
+
               <div class="memo-section">
                 <h4>메모 작성</h4>
 
@@ -315,8 +324,15 @@
                   placeholder="조치 내용이나 메모를 입력하세요..."
                 ></textarea>
 
-                <button @click="addMemo" class="memo-button">
-                  메모 추가
+                <select v-model="selectedStatus" class="status-select">
+                  <option value="">상태 선택</option>
+                  <option value="조치중">조치중</option>
+                  <option value="완료">완료</option>
+                  <option value="미조치">미조치</option>
+                </select>
+
+                <button @click="addMemo" class="memo-button" :disabled="!memoAlarmId || savingMemo">
+                  {{ savingMemo ? '저장 중...' : '메모 및 상태 저장' }}
                 </button>
               </div>
 
@@ -330,9 +346,6 @@
                 >
                   <div class="memo-header">
                     <span class="memo-time">{{ memo.time }}</span>
-                    <button @click="removeMemo(index)" class="memo-delete">
-                      ×
-                    </button>
                   </div>
 
                   <p class="memo-text">{{ memo.text }}</p>
@@ -351,162 +364,328 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AppTopbar from '@/components/AppTopbar.vue'
+import {
+  getAlarmDetail,
+  getAlarmLog,
+  getAlarmLogsByEquipment,
+  getAlarmStatistics,
+  getEquipmentAlarmCount,
+  getEquipmentNames,
+  getMyEquipments,
+  patchAlarmMemo,
+} from '@/api/alarm.js'
 
-const selectedEquipment = ref('Robot A1')
+const selectedEquipmentId = ref('')
+const trendPeriod = ref('day')
+const countDays = ref(7)
+const selectedAlarmId = ref('')
+const selectedStatus = ref('')
 const memoInput = ref('')
-const memoList = ref([])
+const loading = ref(false)
+const savingMemo = ref(false)
+const errorMessage = ref('')
 
-const addMemo = () => {
-  if (memoInput.value.trim()) {
-    const now = new Date()
+const trendData = ref([])
+const frequencyData = ref([])
+const alarmRows = ref([])
+const alarmDetail = ref(null)
+const equipmentList = ref([])
+const assignedEquipmentList = ref([])
 
-    const timeStr = now
-      .toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      })
-      .replace(/\. /g, '-')
-      .replace('.', '')
+const asArray = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.items)) return payload.items
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.rows)) return payload.rows
+  if (Array.isArray(payload?.list)) return payload.list
+  return []
+}
 
-    memoList.value.unshift({
-      time: timeStr,
-      text: memoInput.value
-    })
+const pick = (obj, keys, fallback = '-') => {
+  for (const key of keys) {
+    if (obj?.[key] !== undefined && obj?.[key] !== null && obj?.[key] !== '') return obj[key]
+  }
+  return fallback
+}
 
-    memoInput.value = ''
+const toNumericId = (value) => {
+  if (value === undefined || value === null || value === '') return ''
+  const text = String(value)
+  return /^\d+$/.test(text) ? text : ''
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).replace(/\. /g, '-').replace('.', '')
+}
+
+const normalizeTrend = (payload) =>
+  asArray(payload).map((item) => ({
+    date: String(pick(item, ['date', 'period', 'label', 'created_at', 'createdAt'])),
+    value: Number(pick(item, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
+  }))
+
+const normalizeFrequency = (payload, fallbackId) => {
+  const rows = asArray(payload)
+  const source = rows.length ? rows : [payload]
+  return source
+    .filter(Boolean)
+    .map((item) => ({
+      id: String(pick(item, ['equipment_id', 'equipmentId', 'id'], fallbackId)),
+      name: String(pick(item, ['equipment_name', 'equipmentName', 'name', 'equipment_id', 'equipmentId'], fallbackId)),
+      value: Number(pick(item, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
+    }))
+}
+
+const normalizeEquipment = (item) => {
+  const id = String(pick(item, ['equipment_id', 'equipmentId', 'id'], ''))
+  const name = String(pick(item, ['equipment_name', 'equipmentName', 'name'], id || '-'))
+  return {
+    id,
+    name,
+    icon: getEquipmentIcon(name || id),
   }
 }
 
-const removeMemo = index => {
-  memoList.value.splice(index, 1)
+const normalizeAlarmRow = (row) => {
+  const equipmentId = String(pick(row, ['equipment_id', 'equipmentId'], ''))
+  const alarmId = toNumericId(pick(row, ['alarm_id', 'alarmId'], ''))
+  const rowId = alarmId || String(pick(row, ['id', 'log_id', 'logId'], `${equipmentId}-${pick(row, ['created_at', 'createdAt'], '')}`))
+  return {
+    id: rowId,
+    alarmId,
+    equipmentId,
+    time: formatDateTime(pick(row, ['created_at', 'createdAt', 'time'], '')),
+    equipment: String(pick(row, ['equipment_name', 'equipmentName', 'equipment_id', 'equipmentId'], '-')),
+    type: String(pick(row, ['alarm_type', 'alarmType', 'type'], '-')),
+    severity: String(pick(row, ['severity', 'alarm_level', 'alarmLevel'], 'Medium')),
+    state: String(pick(row, ['alarm_status', 'alarmStatus', 'status'], '-')),
+    manager: String(pick(row, ['user_id', 'userId', 'manager', 'username'], '-')),
+    memo: String(pick(row, ['alarm_memo', 'alarmMemo', 'memo'], '')),
+    raw: row,
+  }
 }
 
-const equipmentList = [
-  { name: 'Robot A1', icon: '⚙' },
-  { name: 'Nutrunner B2', icon: '🛠' },
-  { name: 'Press C1', icon: '◎' },
-  { name: 'Conveyor D1', icon: '▤' },
-  { name: 'Welding E1', icon: '⌘' },
-  { name: 'AGV F1', icon: '▣' }
-]
-
-const trendData = [
-  { date: '05-11', value: 8 },
-  { date: '05-12', value: 12 },
-  { date: '05-13', value: 16 },
-  { date: '05-14', value: 9 },
-  { date: '05-15', value: 14 },
-  { date: '05-16', value: 18 },
-  { date: '05-17', value: 16 },
-  { date: '05-18', value: 11 },
-  { date: '05-19', value: 13 },
-  { date: '05-20', value: 22 },
-  { date: '05-21', value: 17 },
-  { date: '05-22', value: 19 },
-  { date: '05-23', value: 16 },
-  { date: '05-24', value: 14 }
-]
-
-const frequencyData = [
-  { name: 'Robot A1', value: 28 },
-  { name: 'Nutrunner B2', value: 22 },
-  { name: 'Press C1', value: 16 },
-  { name: 'Conveyor D1', value: 15 },
-  { name: 'Robot A2', value: 12 },
-  { name: 'Nutrunner B1', value: 10 },
-  { name: 'AGV F1', value: 8 },
-  { name: 'Welding E1', value: 7 },
-  { name: 'Others', value: 6 }
-]
-
-const alarmRows = [
-  {
-    time: '2024-05-24 10:25:33',
-    equipment: 'Robot A1',
-    type: '모터 과열',
-    severity: 'High',
-    state: '조치중',
-    manager: '김지훈'
-  },
-  {
-    time: '2024-05-24 10:18:17',
-    equipment: 'Nutrunner B2',
-    type: '토크 과부하',
-    severity: 'Medium',
-    state: '조치중',
-    manager: '이수인'
-  },
-  {
-    time: '2024-05-24 09:31:05',
-    equipment: 'Press C1',
-    type: '압력 센서 이상',
-    severity: 'High',
-    state: '조치중',
-    manager: '박준호'
-  },
-  {
-    time: '2024-05-24 08:47:21',
-    equipment: 'Conveyor D1',
-    type: '장비 과부하',
-    severity: 'Medium',
-    state: '완료',
-    manager: '최민석'
-  },
-  {
-    time: '2024-05-24 07:22:11',
-    equipment: 'Robot A2',
-    type: '비전 인식',
-    severity: 'Low',
-    state: '완료',
-    manager: '김지훈'
-  },
-  {
-    time: '2024-05-23 16:15:44',
-    equipment: 'Nutrunner B1',
-    type: '진동 과다',
-    severity: 'High',
-    state: '완료',
-    manager: '이수인'
-  },
-  {
-    time: '2024-05-23 14:03:33',
-    equipment: 'AGV F1',
-    type: '배터리 경고',
-    severity: 'Medium',
-    state: '완료',
-    manager: '박준호'
-  },
-  {
-    time: '2024-05-23 14:11:09',
-    equipment: 'Welding E1',
-    type: '용접 품질 경고',
-    severity: 'Low',
-    state: '완료',
-    manager: '최민석'
-  }
-]
-
-const lineTicks = [40, 30, 20, 10, 0]
-const barTicks = [40, 30, 20, 10, 0]
-
-const lineX = index => 48 + index * (820 / (trendData.length - 1))
-const lineY = value => 186 - value * 3.7
-
-const linePoints = computed(() =>
-  trendData.map((point, index) => `${lineX(index)},${lineY(point.value)}`).join(' ')
+const selectedAlarm = computed(() =>
+  alarmRows.value.find((row) => row.alarmId === selectedAlarmId.value || row.id === selectedAlarmId.value)
 )
 
-const barWidth = 38
-const barGap = 50
-const barX = index => 66 + index * (barWidth + barGap)
-const barY = value => 166 - value * 3.15
-const barHeight = value => 166 - barY(value)
+const detailAlarmSource = computed(() => {
+  const detail = alarmDetail.value
+  if (Array.isArray(detail)) return detail
+  if (Array.isArray(detail?.alarms)) return detail.alarms
+  if (detail?.alarm_log) return [detail.alarm_log]
+  if (detail?.alarmLog) return [detail.alarmLog]
+  return detail ? [detail] : []
+})
+
+const selectedEquipmentName = computed(() =>
+  equipmentList.value.find((item) => item.id === selectedEquipmentId.value)?.name
+    ?? assignedEquipmentList.value.find((item) => item.id === selectedEquipmentId.value)?.name
+    ?? selectedAlarm.value?.equipment
+    ?? selectedEquipmentId.value
+    ?? '-'
+)
+
+const detailAlarm = computed(() => {
+  const raw = detailAlarmSource.value.find((alarm) => {
+    const alarmId = toNumericId(pick(alarm, ['alarm_id', 'alarmId'], ''))
+    return alarmId && alarmId === selectedAlarmId.value
+  }) ?? detailAlarmSource.value[0]
+  return raw ? normalizeAlarmRow(raw) : selectedAlarm.value
+})
+
+const memoAlarmId = computed(() =>
+  toNumericId(selectedAlarm.value?.alarmId) || toNumericId(detailAlarm.value?.alarmId)
+)
+
+const equipmentDetail = computed(() =>
+  alarmDetail.value?.equipment ?? alarmDetail.value?.equipmentDetail ?? alarmDetail.value?.equipment_info ?? {}
+)
+
+const detailRows = computed(() => {
+  const alarm = detailAlarm.value?.raw ?? {}
+  const equipment = equipmentDetail.value ?? {}
+  return [
+    ['알람 ID', pick(alarm, ['alarm_id', 'alarmId', 'id'], selectedAlarm.value?.alarmId ?? '-')],
+    ['설비 ID', pick(alarm, ['equipment_id', 'equipmentId'], selectedEquipmentId.value ?? '-')],
+    ['알람 유형', pick(alarm, ['alarm_type', 'alarmType', 'type'], detailAlarm.value?.type ?? '-')],
+    ['상태', pick(alarm, ['alarm_status', 'alarmStatus', 'status'], detailAlarm.value?.state ?? '-')],
+    ['담당자', pick(alarm, ['user_id', 'userId', 'manager'], detailAlarm.value?.manager ?? '-')],
+    ['메모', pick(alarm, ['alarm_memo', 'alarmMemo', 'memo'], memoInput.value || '-')],
+    ['설비명', pick(equipment, ['equipment_name', 'equipmentName', 'name'], selectedEquipmentName.value)],
+    ['제조사', pick(equipment, ['manufacturer', 'maker'], '-')],
+    ['위치', pick(equipment, ['location', 'zone', 'line_no', 'lineNo'], '-')],
+    ['설비 유형', pick(equipment, ['equipment_type', 'equipmentType', 'type'], '-')],
+  ]
+})
+
+const memoList = computed(() => {
+  const memo = pick(detailAlarm.value?.raw, ['alarm_memo', 'alarmMemo', 'memo'], '')
+  if (!memo) return []
+  return [{
+    time: detailAlarm.value?.time ?? '-',
+    text: memo,
+  }]
+})
+
+const getEquipmentIcon = (name = '') => {
+  const lower = String(name).toLowerCase()
+  if (lower.includes('robot')) return '⚙'
+  if (lower.includes('nut')) return '⌘'
+  if (lower.includes('press')) return '◎'
+  if (lower.includes('conveyor') || lower.includes('cnv')) return '▤'
+  if (lower.includes('weld')) return '◈'
+  if (lower.includes('agv')) return '▣'
+  return '□'
+}
+
+const selectEquipment = (equipmentId) => {
+  selectedEquipmentId.value = equipmentId
+  const alarm = alarmRows.value.find((row) => row.equipmentId === equipmentId)
+  selectedAlarmId.value = alarm?.alarmId || ''
+}
+
+const selectAlarm = (row) => {
+  selectedEquipmentId.value = row.equipmentId
+  selectedAlarmId.value = row.alarmId
+  selectedStatus.value = row.state
+  memoInput.value = row.memo
+}
+
+const loadTrend = async () => {
+  trendData.value = normalizeTrend(await getAlarmStatistics(trendPeriod.value))
+}
+
+const loadEquipmentLists = async () => {
+  const [allEquipments, assignedEquipments] = await Promise.all([
+    getEquipmentNames(),
+    getMyEquipments(),
+  ])
+  equipmentList.value = asArray(allEquipments).map(normalizeEquipment).filter((item) => item.id)
+  assignedEquipmentList.value = asArray(assignedEquipments).map(normalizeEquipment).filter((item) => item.id)
+}
+
+const loadCounts = async () => {
+  const targets = equipmentList.value.map((item) => [item.id, item.name])
+  const fallbackTargets = selectedEquipmentId.value ? [[selectedEquipmentId.value, selectedEquipmentName.value]] : []
+  const logTargets = [...new Map(
+    alarmRows.value
+      .filter((row) => row.equipmentId)
+      .map((row) => [row.equipmentId, row.equipment]),
+  )]
+  const equipmentTargets = targets.length ? targets : (logTargets.length ? logTargets : fallbackTargets)
+  if (!equipmentTargets.length) return
+
+  const counts = await Promise.all(
+    equipmentTargets.map(async ([equipmentId, equipmentName]) => {
+      const payload = await getEquipmentAlarmCount(equipmentId, countDays.value)
+      const normalized = normalizeFrequency(payload, equipmentId)
+      const ownCount = normalized.find((row) => row.id === equipmentId) ?? normalized[0]
+      return {
+        id: equipmentId,
+        name: equipmentName || ownCount?.name || equipmentId,
+        value: Number(ownCount?.value ?? pick(payload, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
+      }
+    }),
+  )
+  frequencyData.value = counts
+}
+
+const loadLogs = async () => {
+  const payload = selectedEquipmentId.value
+    ? await getAlarmLogsByEquipment(selectedEquipmentId.value)
+    : await getAlarmLog()
+  alarmRows.value = asArray(payload).map(normalizeAlarmRow)
+
+  const selectedAlarmExists = alarmRows.value.some((row) => row.alarmId === selectedAlarmId.value)
+  if (!selectedAlarmExists) {
+    const firstAlarm = alarmRows.value[0]
+    selectedAlarmId.value = firstAlarm?.alarmId || ''
+    selectedStatus.value = firstAlarm?.state || ''
+    memoInput.value = firstAlarm?.memo || ''
+  }
+}
+
+const loadDetail = async () => {
+  if (!selectedEquipmentId.value) return
+  alarmDetail.value = await getAlarmDetail(selectedEquipmentId.value)
+  selectedStatus.value = detailAlarm.value?.state ?? selectedStatus.value
+  memoInput.value = pick(detailAlarm.value?.raw, ['alarm_memo', 'alarmMemo', 'memo'], '')
+}
+
+const loadPageData = async () => {
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    await Promise.all([loadTrend(), loadEquipmentLists()])
+    if (!selectedEquipmentId.value) {
+      const firstEquipment = assignedEquipmentList.value[0] ?? equipmentList.value[0]
+      if (firstEquipment) selectEquipment(firstEquipment.id)
+    }
+    await Promise.all([loadLogs(), loadCounts(), loadDetail()])
+  } catch (err) {
+    errorMessage.value = err.message || '알람 데이터를 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const addMemo = async () => {
+  const alarmId = memoAlarmId.value
+  if (!alarmId || savingMemo.value) return
+  savingMemo.value = true
+  errorMessage.value = ''
+  try {
+    await patchAlarmMemo(alarmId, {
+      alarm_memo: memoInput.value.trim(),
+      alarm_status: selectedStatus.value || detailAlarm.value?.state || selectedAlarm.value?.state,
+    })
+    await Promise.all([loadLogs(), loadDetail()])
+  } catch (err) {
+    errorMessage.value = err.message || '알람 메모 저장에 실패했습니다.'
+  } finally {
+    savingMemo.value = false
+  }
+}
+
+watch(trendPeriod, loadTrend)
+watch(countDays, loadCounts)
+watch(selectedEquipmentId, async () => {
+  await Promise.all([loadLogs(), loadCounts(), loadDetail()])
+})
+
+onMounted(loadPageData)
+
+const lineMax = computed(() => Math.max(10, Math.ceil(Math.max(0, ...trendData.value.map((point) => point.value)) / 10) * 10))
+const barMax = computed(() => Math.max(10, Math.ceil(Math.max(0, ...frequencyData.value.map((bar) => bar.value)) / 10) * 10))
+const lineTicks = computed(() => [lineMax.value, lineMax.value * 0.75, lineMax.value * 0.5, lineMax.value * 0.25, 0].map(Math.round))
+const barTicks = computed(() => [barMax.value, barMax.value * 0.75, barMax.value * 0.5, barMax.value * 0.25, 0].map(Math.round))
+
+const lineX = (index) => 48 + index * (820 / Math.max(1, trendData.value.length - 1))
+const lineY = (value) => 186 - (value / lineMax.value) * 166
+
+const linePoints = computed(() =>
+  trendData.value.map((point, index) => `${lineX(index)},${lineY(point.value)}`).join(' ')
+)
+
+const barWidth = computed(() => Math.max(26, Math.min(58, 640 / Math.max(1, frequencyData.value.length) - 18)))
+const barGap = computed(() => Math.max(28, (820 - (barWidth.value * frequencyData.value.length)) / Math.max(1, frequencyData.value.length)))
+const barX = (index) => 66 + index * (barWidth.value + barGap.value)
+const barY = (value) => 166 - (value / barMax.value) * 146
+const barHeight = (value) => 166 - barY(value)
 </script>
 
 <style scoped>
@@ -540,6 +719,14 @@ const barHeight = value => 166 - barY(value)
   border-right: 1px solid #d9e2ef;
 }
 
+.sidebar-cards {
+  position: fixed;
+  top: 90px;
+  left: 16px;
+  width: 248px;
+  z-index: 5;
+}
+
 .side-card {
   padding: 16px;
   border-radius: 18px;
@@ -558,16 +745,30 @@ const barHeight = value => 166 - barY(value)
   letter-spacing: -0.02em;
 }
 
+.equipment-list-scroll {
+  max-height: 280px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.equipment-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.equipment-list-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
 .equipment-item {
   width: 100%;
-  height: 46px;
-  padding: 0 14px;
+  min-height: 46px;
+  padding: 8px 14px;
   border: 0;
   border-radius: 14px;
-  background: transparent;
   color: rgba(255, 255, 255, 0.84);
+  background: transparent;
   display: grid;
-  grid-template-columns: 30px 1fr;
   align-items: center;
   gap: 10px;
   font-size: 14px;
@@ -575,6 +776,7 @@ const barHeight = value => 166 - barY(value)
   text-align: left;
   cursor: pointer;
   transition: 0.18s ease;
+  grid-template-columns: 30px minmax(0, 1fr);
 }
 
 .equipment-item + .equipment-item {
@@ -589,6 +791,28 @@ const barHeight = value => 166 - barY(value)
   background: #ffffff;
   color: #0f2747;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+.equipment-item strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equipment-item small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.equipment-item.selected small {
+  color: #64748b;
 }
 
 .equip-icon {
@@ -607,7 +831,7 @@ const barHeight = value => 166 - barY(value)
 }
 
 .assigned-card {
-  min-height: 320px;
+  min-height: 0;
 }
 
 /* 본문 */
@@ -766,6 +990,13 @@ const barHeight = value => 166 - barY(value)
   text-anchor: middle;
 }
 
+.empty-chart-text {
+  fill: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
 .x-label,
 .bar-label {
   text-anchor: middle;
@@ -798,7 +1029,7 @@ const barHeight = value => 166 - barY(value)
 
 table {
   width: 100%;
-  min-width: 860px;
+  min-width: 720px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
@@ -832,6 +1063,10 @@ tbody tr:nth-child(even) {
 
 tbody tr:hover {
   background: #f1f7ff;
+}
+
+tbody tr.selected {
+  background: #eaf2ff;
 }
 
 tbody tr:last-child td {
@@ -895,6 +1130,13 @@ tbody tr:last-child td {
 .table-footer strong {
   font-weight: 850;
   color: #172033;
+}
+
+.table-hint {
+  justify-self: end;
+  font-size: 13px;
+  font-weight: 800;
+  color: #64748b;
 }
 
 .pagination {
@@ -1069,6 +1311,28 @@ tbody tr:last-child td {
   color: #94a3b8;
 }
 
+.status-select {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d8e0ec;
+  border-radius: 13px;
+  background: #ffffff;
+  color: #273449;
+  font-size: 13px;
+  font-weight: 800;
+  outline: none;
+}
+
+.error-box {
+  padding: 12px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .memo-button {
   height: 40px;
   border: 0;
@@ -1154,6 +1418,10 @@ tbody tr:last-child td {
     grid-template-columns: 260px minmax(0, 1fr);
   }
 
+  .sidebar-cards {
+    width: 228px;
+  }
+
   .content-area {
     grid-template-columns: minmax(0, 1fr) 380px;
     gap: 18px;
@@ -1171,6 +1439,10 @@ tbody tr:last-child td {
   }
 
   .sidebar {
+    display: none;
+  }
+
+  .sidebar-cards {
     display: none;
   }
 
