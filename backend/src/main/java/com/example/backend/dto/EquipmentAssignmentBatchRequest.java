@@ -2,10 +2,11 @@ package com.example.backend.dto;
 
 import java.util.List;
 
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 
 public class EquipmentAssignmentBatchRequest {
-    @NotEmpty
+
+    @NotNull(message = "equipmentIds cannot be null")
     private List<String> equipmentIds;
 
     public List<String> getEquipmentIds() {
