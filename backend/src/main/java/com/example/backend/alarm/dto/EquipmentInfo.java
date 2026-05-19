@@ -1,6 +1,7 @@
 package com.example.backend.alarm.dto;
 
 import java.time.LocalDate;
+import java.math.BigDecimal;
 
 public class EquipmentInfo {
 
@@ -13,6 +14,8 @@ public class EquipmentInfo {
 	private Float healthScore;
 	private Float remainingLife;
 	private LocalDate replacementDate;
+	private Integer expectedLifetimeHours;
+	private BigDecimal accumulatedRunHours;
 
 	public String getEquipmentId() {
 		return equipmentId;
@@ -84,5 +87,21 @@ public class EquipmentInfo {
 
 	public void setReplacementDate(LocalDate replacementDate) {
 		this.replacementDate = replacementDate;
+	}
+
+	public Integer getExpectedLifetimeHours() {
+		return expectedLifetimeHours;
+	}
+
+	public void setExpectedLifetimeHours(Integer expectedLifetimeHours) {
+		this.expectedLifetimeHours = expectedLifetimeHours;
+	}
+
+	public BigDecimal getAccumulatedRunHours() {
+		return accumulatedRunHours;
+	}
+
+	public void setAccumulatedRunHours(BigDecimal accumulatedRunHours) {
+		this.accumulatedRunHours = accumulatedRunHours;
 	}
 }

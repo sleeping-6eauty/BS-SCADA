@@ -1,5 +1,8 @@
 package com.example.backend.mail.scheduler;
 
+import java.util.List;
+
+import com.example.backend.mail.dto.MailReport;
 import com.example.backend.mail.service.MailReportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,8 +26,8 @@ public class DailyMailReportScheduler {
 	)
 	public void createDailySummaryReport() {
 		try {
-			mailReportService.createDailySummaryReport();
-			logger.info("daily mail report generated");
+			List<MailReport> reports = mailReportService.createDailySummaryReport();
+			logger.info("daily mail reports generated: {}", reports.size());
 		} catch (Exception exception) {
 			logger.error("failed to generate daily mail report", exception);
 		}
