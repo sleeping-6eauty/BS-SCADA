@@ -167,7 +167,7 @@
             <dl class="info-list">
               <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
               <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
-              <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
+              <div><dt>설비 위치</dt><dd>{{ currentEquipmentLocation }}</dd></div>
               <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
               <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
             </dl>
@@ -223,19 +223,19 @@
               </div>
               <div v-if="currentSensorData.sensor1" class="metric-box">
                 <span>{{ currentSensorData.sensor1.label }}</span>
-                <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
+                <strong>{{ currentSensorData.sensor1.value.toFixed(currentSensorData.sensor1.decimals) }} {{ currentSensorData.sensor1.unit }}</strong>
               </div>
               <div v-if="currentSensorData.sensor2" class="metric-box">
                 <span>{{ currentSensorData.sensor2.label }}</span>
-                <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
+                <strong>{{ currentSensorData.sensor2.value.toFixed(currentSensorData.sensor2.decimals) }} {{ currentSensorData.sensor2.unit }}</strong>
               </div>
               <div v-if="currentSensorData.sensor3" class="metric-box">
                 <span>{{ currentSensorData.sensor3.label }}</span>
-                <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
+                <strong>{{ currentSensorData.sensor3.value.toFixed(currentSensorData.sensor3.decimals) }} {{ currentSensorData.sensor3.unit }}</strong>
               </div>
               <div v-if="currentSensorData.sensor4" class="metric-box">
                 <span>{{ currentSensorData.sensor4.label }}</span>
-                <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
+                <strong>{{ currentSensorData.sensor4.value.toFixed(currentSensorData.sensor4.decimals) }} {{ currentSensorData.sensor4.unit }}</strong>
               </div>
             </div>
           </section>
@@ -263,8 +263,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import mqtt from 'mqtt'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
 import AppTopbar from '@/components/AppTopbar.vue'
 
@@ -273,6 +274,8 @@ const activeView = ref('layout')
 const equipmentSearch = ref('')
 const currentPage = ref(1)
 const rowsPerPage = 10
+const mqttRealtimeTopic = 'factory/equipment/+/realtime'
+const mqttBrokerUrl = import.meta.env.VITE_MQTT_URL ?? 'ws://localhost:9001'
 
 const statusText = {
   running: '가동',
@@ -343,6 +346,11 @@ const monitoringEquipmentTypes = [
   { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'BS-SCADA' },
 ]
 
+const monitoringEquipmentTypeByCode = monitoringEquipmentTypes.reduce((map, item) => {
+  map[item.code] = item
+  return map
+}, {})
+
 const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeIndex) =>
   [1, 2, 3].map((sequence, sequenceIndex) => ({
     id: `${item.code}-${String(sequence).padStart(3, '0')}`,
@@ -410,29 +418,63 @@ const conveyorControls = reactive({
   'CNV-003': { frequency: 40, rotating: true, stopped: false },
 })
 
+const statusCodeMap = {
+  RUN: 'running',
+  RUNNING: 'running',
+  IDLE: 'idle',
+  WAIT: 'idle',
+  STOP: 'stop',
+  STOPPED: 'stop',
+  UNKNOWN: 'unknown',
+}
+
+const realtimeEquipmentData = reactive({})
+let mqttClient = null
+
 // 설비 유형별 센서 데이터 라벨
 const getSensorDisplayLabels = (type) => {
-  if (type === 'robot' || type === 'rob') {
+  if (type === 'cnv') {
     return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
-    }
-  } else if (type === 'nutrunner') {
-    return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_ac', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_ac', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'cycle_time', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '모터 온도', key: 'motor_temperature_c', unit: '℃', decimals: 1 },
+      sensor2: { label: '모터 전류', key: 'motor_current_c', unit: 'A', decimals: 1 },
+      sensor3: { label: '이동 속도', key: 'moving_speed_m_s', unit: 'm/s', decimals: 2 },
     }
   }
-  if (['plf', 'jig', 'wld', 'slr', 'vsi'].includes(type)) {
+  if (type === 'plf') {
     return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '모터 전류', key: 'moter_current_a', unit: 'A', decimals: 1 },
+      sensor2: { label: '진공 압력', key: 'vaccum_pressure_kpa', unit: 'kPa', decimals: 1 },
+      sensor3: { label: '위치 오차', key: 'position_error_mm', unit: 'mm', decimals: 2 },
+    }
+  }
+  if (type === 'jig') {
+    return {
+      sensor1: { label: '클램프 압력', key: 'clamp_pressure_bar', unit: 'bar', decimals: 2 },
+      sensor2: { label: '공압 압력', key: 'pneumatic_press_bar', unit: 'bar', decimals: 2 },
+      sensor3: { label: '클램프 위치', key: 'clamp_position_mm', unit: 'mm', decimals: 1 },
+    }
+  }
+  if (type === 'robot' || type === 'rob') {
+    return {
+      sensor1: { label: '스위블', key: 'robot_swivel', unit: 'deg', decimals: 1 },
+      sensor2: { label: '수평축', key: 'robot_horizontal', unit: 'mm', decimals: 1 },
+      sensor3: { label: '수직축', key: 'robot_vertical', unit: 'mm', decimals: 1 },
+      sensor4: { label: '툴 오프셋', key: 'tool_offset_er', unit: 'mm', decimals: 2 },
+    }
+  }
+  if (type === 'wld') {
+    return {
+      sensor1: { label: '용접 전압(DC)', key: 'weld_voltage_dc', unit: 'V', decimals: 1 },
+      sensor2: { label: '용접 전류(DC)', key: 'weld_current_dc', unit: 'A', decimals: 1 },
+      sensor3: { label: '용접 전류(AC)', key: 'weld_current_ac', unit: 'A', decimals: 1 },
+      sensor4: { label: '용접 속도', key: 'weld_speed', unit: 'mm/s', decimals: 1 },
+    }
+  }
+  if (type === 'slr') {
+    return {
+      sensor1: { label: '토출 압력', key: 'dispense_pressure_bar', unit: 'bar', decimals: 2 },
+      sensor2: { label: '실러 온도', key: 'sealer_temperature_c', unit: '℃', decimals: 1 },
+      sensor3: { label: '유량', key: 'flow_rate_ml_s', unit: 'ml/s', decimals: 2 },
     }
   }
   return {}
@@ -531,24 +573,141 @@ const shouldApplyLogStatus = (logData) => {
   return logData?.status && logData.status !== 'unknown'
 }
 
+const normalizeStatus = (status) => {
+  const normalizedStatus = String(status ?? '').trim().toUpperCase()
+  return statusCodeMap[normalizedStatus] ?? String(status ?? 'unknown').toLowerCase()
+}
+
+const normalizeLineNo = (lineNo) => {
+  const value = String(lineNo ?? '').trim()
+  if (!value) return ''
+  if (/^line\s*/i.test(value)) return value.replace(/\s+/g, '')
+  return `Line${value}`
+}
+
+const formatEquipmentLocation = (lineNo, zone) => {
+  const line = normalizeLineNo(lineNo)
+  const normalizedZone = String(zone ?? '').trim().replace(/\s+/g, '')
+  return [line, normalizedZone].filter(Boolean).join(' - ') || '-'
+}
+
+const getEquipmentCode = (equipmentId) => String(equipmentId ?? '').split('-')[0]?.toUpperCase() ?? ''
+
+const getEquipmentMeta = (equipmentId) => monitoringEquipmentTypeByCode[getEquipmentCode(equipmentId)] ?? {}
+
+const getRealtimeData = (equipmentId) => realtimeEquipmentData[equipmentId] ?? equipmentLogCache[equipmentId]
+
+const formatRunSeconds = (seconds) => {
+  const totalSeconds = Number(seconds)
+  if (!Number.isFinite(totalSeconds)) return null
+
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const remainSeconds = safeSeconds % 60
+  return [hours, minutes, remainSeconds].map((unit) => String(unit).padStart(2, '0')).join(':')
+}
+
+const getRunningTimeText = (equipmentId, fallback = '00:00:00') => {
+  const realtimeData = getRealtimeData(equipmentId)
+  return formatRunSeconds(realtimeData?.accumulated_run_hours) ?? fallback
+}
+
+const getLocationForEquipment = (equipmentId, lineNo, zone) => {
+  const meta = getEquipmentMeta(equipmentId)
+  return formatEquipmentLocation(lineNo, zone ?? meta.zone)
+}
+
+const applyRealtimePayload = (payload) => {
+  const equipmentId = String(payload?.equipment_id ?? '').trim()
+  if (!equipmentId) return
+
+  const meta = getEquipmentMeta(equipmentId)
+  const realtimeData = {
+    ...payload,
+    equipment_id: equipmentId,
+    equipment_name: payload.equipment_name ?? meta.label ?? equipmentId,
+    manufacturer: payload.manufacturer ?? meta.manufacturer ?? 'BS-SCADA',
+    zone: payload.zone ?? meta.zone,
+    type: payload.type ?? meta.type,
+    status: normalizeStatus(payload.status),
+  }
+
+  realtimeEquipmentData[equipmentId] = realtimeData
+  equipmentLogCache[equipmentId] = realtimeData
+
+  const station = productionLines
+    .flatMap((line) => [line.conveyor, ...line.stations])
+    .find((item) => item.id === equipmentId)
+
+  if (station) {
+    station.status = realtimeData.status
+    station.manufacturer = realtimeData.manufacturer
+    station.equipment_name = realtimeData.equipment_name
+    station.line_no = normalizeLineNo(realtimeData.line_no) || station.line_no
+    station.zone = realtimeData.zone ?? station.zone
+  }
+
+  if (selectedEquipment.value?.id === equipmentId) {
+    selectedEquipment.value = {
+      ...selectedEquipment.value,
+      status: realtimeData.status,
+      manufacturer: realtimeData.manufacturer,
+      zone: realtimeData.zone ?? selectedEquipment.value.zone,
+      line_no: normalizeLineNo(realtimeData.line_no) || selectedEquipment.value.line_no,
+      equipment_name: realtimeData.equipment_name,
+    }
+    latestLog.data = realtimeData
+    runningTime.value = getRunningTimeText(equipmentId, runningTime.value)
+  }
+}
+
+const handleMqttMessage = (_topic, message) => {
+  try {
+    const payload = JSON.parse(message.toString())
+    applyRealtimePayload(payload)
+  } catch (err) {
+    console.warn('Failed to parse equipment realtime MQTT payload:', err)
+  }
+}
+
+const connectMqtt = () => {
+  mqttClient = mqtt.connect(mqttBrokerUrl, {
+    reconnectPeriod: 3000,
+    connectTimeout: 5000,
+    clean: true,
+  })
+
+  mqttClient.on('connect', () => {
+    mqttClient.subscribe(mqttRealtimeTopic, (err) => {
+      if (err) console.warn('Failed to subscribe equipment realtime MQTT topic:', err)
+    })
+  })
+
+  mqttClient.on('message', handleMqttMessage)
+  mqttClient.on('error', (err) => {
+    console.warn('Equipment realtime MQTT connection error:', err)
+  })
+}
+
 // 테이블 데이터
 const equipmentRows = computed(() => {
   return monitoringEquipmentCatalog.map((eq) => {
-    const cachedLog = equipmentLogCache[eq.id]
+    const cachedLog = getRealtimeData(eq.id)
     const status = shouldApplyLogStatus(cachedLog) ? cachedLog.status : eq.status
 
     return {
       id: eq.id,
       name: eq.name,
-      line: eq.line,
-      lineNo: eq.lineNo,
-      zone: eq.zone,
+      line: getLocationForEquipment(eq.id, cachedLog?.line_no ?? eq.lineNo, cachedLog?.zone ?? eq.zone),
+      lineNo: normalizeLineNo(cachedLog?.line_no ?? eq.lineNo),
+      zone: cachedLog?.zone ?? eq.zone,
       rawType: eq.rawType,
-      typeName: eq.typeName,
-      manufacturer: eq.manufacturer,
+      typeName: cachedLog?.equipment_name ?? eq.typeName,
+      manufacturer: cachedLog?.manufacturer ?? eq.manufacturer,
       status: status,
       alarm: status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
-      runningTime: eq.runningTime,
+      runningTime: getRunningTimeText(eq.id, eq.runningTime),
       updatedAt: cachedLog?.timestamp || '2024-05-24 10:30:45'
     }
   })
@@ -585,6 +744,8 @@ watch(totalPages, (nextTotalPages) => {
 
 // 초기 데이터 로드
 onMounted(async () => {
+  connectMqtt()
+
   try {
     equipment.loading = true
     const equipmentsData = await fetchEquipments()
@@ -625,6 +786,13 @@ watch(selectedEquipment, async (newEquipment) => {
   
   try {
     latestLog.loading = true
+
+    const realtimeData = getRealtimeData(newEquipment.id)
+    if (realtimeData) {
+      latestLog.data = realtimeData
+      runningTime.value = getRunningTimeText(newEquipment.id, runningTime.value)
+      return
+    }
     
     // 최신 로그 데이터 로드
     const logData = await fetchLatestLog(newEquipment.id)
@@ -651,22 +819,42 @@ watch(selectedEquipment, async (newEquipment) => {
   }
 }, { immediate: true })
 
+onBeforeUnmount(() => {
+  if (!mqttClient) return
+  mqttClient.end(true)
+  mqttClient = null
+})
+
 // 현재 설비의 상세 정보
 const currentEquipmentDetail = computed(() => {
   if (!selectedEquipment.value) return {}
   
   const equipDetail = equipment.list.find(eq => eq.equipment_id === selectedEquipment.value.id)
-  return equipDetail || {
+  const realtimeData = getRealtimeData(selectedEquipment.value.id) ?? {}
+  return {
+    ...(equipDetail || {}),
+    ...realtimeData,
     equipment_id: selectedEquipment.value.equipment_id ?? selectedEquipment.value.id,
-    equipment_name: selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
-    manufacturer: selectedEquipment.value.manufacturer ?? 'BS-SCADA',
-    zone: selectedEquipment.value.zone,
-    line_no: selectedEquipment.value.line_no ?? selectedEquipment.value.line,
-    type: selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
+    equipment_name: realtimeData.equipment_name ?? selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
+    manufacturer: realtimeData.manufacturer ?? selectedEquipment.value.manufacturer ?? 'BS-SCADA',
+    zone: realtimeData.zone ?? selectedEquipment.value.zone,
+    line_no: normalizeLineNo(realtimeData.line_no ?? selectedEquipment.value.line_no ?? selectedEquipment.value.line),
+    type: realtimeData.type ?? selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
   }
 })
 
+const currentEquipmentLocation = computed(() => {
+  return getLocationForEquipment(
+    currentEquipmentDetail.value.equipment_id,
+    currentEquipmentDetail.value.line_no,
+    currentEquipmentDetail.value.zone,
+  )
+})
+
 const selectedEquipmentTypeLabel = computed(() => {
+  const realtimeTypeName = getRealtimeData(selectedEquipment.value?.id)?.equipment_name
+  if (realtimeTypeName) return realtimeTypeName
+
   const type = currentEquipmentDetail.value.type ?? selectedEquipment.value?.layoutType ?? selectedEquipment.value?.type
   return equipmentTypeLabels[type] ?? equipmentTypeLabels[selectedEquipment.value?.type] ?? '-'
 })
@@ -689,10 +877,14 @@ const currentSensorData = computed(() => {
   const data = {}
   
   Object.entries(labels).forEach(([key, label]) => {
+    const value = Number(latestLog.data[label.key])
+    if (!Number.isFinite(value)) return
+
     data[key] = {
       label: label.label,
-      value: latestLog.data[label.key] || 0,
+      value,
       unit: label.unit,
+      decimals: label.decimals ?? 1,
     }
   })
   
