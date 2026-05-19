@@ -71,3 +71,12 @@ export async function assignEquipmentsBatch(userId, equipmentIds) {
   if (!res.ok) throw new Error(data.message || '설비 배정 실패')
   return data.data
 }
+
+export async function getEquipmentNames() {
+  const res = await fetch(`${API_BASE}/api/equipments/names`, {
+    headers: authHeaders(),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.message || '설비 목록 조회 실패')
+  return data.data
+}
