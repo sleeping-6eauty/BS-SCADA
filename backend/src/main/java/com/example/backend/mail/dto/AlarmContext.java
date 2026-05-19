@@ -9,6 +9,10 @@ public class AlarmContext {
 	private String alarmType;
 	private String alarmStatus;
 	private String alarmMemo;
+	private Float healthScore;
+	private Long recipientUserId;
+	private String recipientEmail;
+	private String recipientName;
 	private LocalDateTime timestamp;
 
 	public Long getAlarmId() {
@@ -49,6 +53,38 @@ public class AlarmContext {
 
 	public void setAlarmMemo(String alarmMemo) {
 		this.alarmMemo = alarmMemo;
+	}
+
+	public Float getHealthScore() {
+		return healthScore;
+	}
+
+	public void setHealthScore(Float healthScore) {
+		this.healthScore = healthScore;
+	}
+
+	public Long getRecipientUserId() {
+		return recipientUserId;
+	}
+
+	public void setRecipientUserId(Long recipientUserId) {
+		this.recipientUserId = recipientUserId;
+	}
+
+	public String getRecipientEmail() {
+		return recipientEmail;
+	}
+
+	public void setRecipientEmail(String recipientEmail) {
+		this.recipientEmail = recipientEmail;
+	}
+
+	public String getRecipientName() {
+		return recipientName;
+	}
+
+	public void setRecipientName(String recipientName) {
+		this.recipientName = recipientName;
 	}
 
 	public LocalDateTime getTimestamp() {

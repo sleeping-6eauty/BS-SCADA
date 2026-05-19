@@ -2,26 +2,22 @@ package com.example.backend.alarm.dto;
 
 import java.time.LocalDateTime;
 
-public class AlarmLogEntry {
+import jakarta.validation.constraints.NotBlank;
 
-	private Long alarmId;
+public class AlarmCreateRequest {
+
 	private Long logId;
+
+	@NotBlank(message = "equipmentId is required")
 	private String equipmentId;
+
 	private LocalDateTime timestamp;
+
+	@NotBlank(message = "alarmType is required")
 	private String alarmType;
+
 	private String alarmMemo;
-	private String alarmText;
 	private String alarmStatus;
-	private LocalDateTime createdAt;
-	private LocalDateTime updatedAt;
-
-	public Long getAlarmId() {
-		return alarmId;
-	}
-
-	public void setAlarmId(Long alarmId) {
-		this.alarmId = alarmId;
-	}
 
 	public Long getLogId() {
 		return logId;
@@ -63,35 +59,11 @@ public class AlarmLogEntry {
 		this.alarmMemo = alarmMemo;
 	}
 
-	public String getAlarmText() {
-		return alarmText;
-	}
-
-	public void setAlarmText(String alarmText) {
-		this.alarmText = alarmText;
-	}
-
 	public String getAlarmStatus() {
 		return alarmStatus;
 	}
 
 	public void setAlarmStatus(String alarmStatus) {
 		this.alarmStatus = alarmStatus;
-	}
-
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
-	}
-
-	public void setCreatedAt(LocalDateTime createdAt) {
-		this.createdAt = createdAt;
-	}
-
-	public LocalDateTime getUpdatedAt() {
-		return updatedAt;
-	}
-
-	public void setUpdatedAt(LocalDateTime updatedAt) {
-		this.updatedAt = updatedAt;
 	}
 }

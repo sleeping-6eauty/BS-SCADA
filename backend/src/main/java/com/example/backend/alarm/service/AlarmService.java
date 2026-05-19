@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import com.example.backend.alarm.dto.Alarm;
 import com.example.backend.alarm.dto.AlarmCountResponse;
+import com.example.backend.alarm.dto.AlarmCreateRequest;
 import com.example.backend.alarm.dto.AlarmEquipmentDetailResponse;
 import com.example.backend.alarm.dto.AlarmLogEntry;
 import com.example.backend.alarm.dto.AlarmLogRow;
@@ -24,7 +25,9 @@ import com.example.backend.alarm.dto.AlarmStatisticsItem;
 import com.example.backend.alarm.dto.AlarmStatisticsResponse;
 import com.example.backend.alarm.dto.EquipmentInfo;
 import com.example.backend.alarm.mapper.AlarmMapper;
+import com.example.backend.mail.service.MailReportService;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.example.backend.common.PageMeta;
@@ -34,11 +37,57 @@ import com.example.backend.common.PageResponse;
 public class AlarmService {
 
 	private final AlarmMapper alarmMapper;
+	private final ObjectProvider<MailReportService> mailReportServiceProvider;
+	private final double lowHealthThreshold;
 	private final Map<Long, Alarm> fallbackAlarms = new ConcurrentHashMap<>();
 
-	public AlarmService(ObjectProvider<AlarmMapper> alarmMapperProvider) {
+	public AlarmService(
+		ObjectProvider<AlarmMapper> alarmMapperProvider,
+		ObjectProvider<MailReportService> mailReportServiceProvider,
+		@Value("${mail.report.low-health.threshold:70}") double lowHealthThreshold
+	) {
 		this.alarmMapper = alarmMapperProvider.getIfAvailable();
+		this.mailReportServiceProvider = mailReportServiceProvider;
+		this.lowHealthThreshold = lowHealthThreshold;
 		seedFallbackAlarms();
+	}
+
+	public AlarmLogEntry createAlarm(AlarmCreateRequest request) {
+		AlarmLogEntry alarm = new AlarmLogEntry();
+		alarm.setLogId(request.getLogId());
+		alarm.setEquipmentId(request.getEquipmentId());
+		alarm.setTimestamp(request.getTimestamp());
+		alarm.setAlarmType(request.getAlarmType());
+		alarm.setAlarmMemo(request.getAlarmMemo());
+		alarm.setAlarmStatus(request.getAlarmStatus());
+
+		if (alarmMapper == null) {
+			long alarmId = fallbackAlarms.keySet().stream().mapToLong(Long::longValue).max().orElse(0L) + 1L;
+			alarm.setAlarmId(alarmId);
+			fallbackAlarms.put(alarmId, new Alarm(
+				alarmId,
+				alarm.getLogId(),
+				alarm.getEquipmentId(),
+				alarm.getTimestamp(),
+				alarm.getAlarmType(),
+				alarm.getAlarmMemo(),
+				alarm.getAlarmStatus() == null ? "OPEN" : alarm.getAlarmStatus(),
+				null,
+				null,
+				null,
+				null,
+				null,
+				null
+			));
+			return toFallbackLogEntry(fallbackAlarms.get(alarmId));
+		}
+
+		alarmMapper.insert(alarm);
+		MailReportService mailReportService = mailReportServiceProvider.getIfAvailable();
+		if (mailReportService != null && alarm.getAlarmId() != null) {
+			mailReportService.createLowHealthAlarmReportsForAlarm(alarm.getAlarmId(), lowHealthThreshold);
+		}
+		return alarmMapper.findAlarmLogById(alarm.getAlarmId());
 	}
 
 	public PageResponse<Alarm> findAlarms(AlarmQuery query) {
@@ -277,6 +326,7 @@ public class AlarmService {
 		entry.setTimestamp(alarm.timestamp());
 		entry.setAlarmType(alarm.alarmType());
 		entry.setAlarmMemo(alarm.alarmMemo());
+		entry.setAlarmText(null);
 		entry.setAlarmStatus(alarm.alarmStatus());
 		entry.setCreatedAt(alarm.timestamp());
 		entry.setUpdatedAt(alarm.timestamp());

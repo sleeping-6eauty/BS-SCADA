@@ -31,7 +31,7 @@ public class MailReportController {
 	}
 
 	@PostMapping("/daily")
-	public ApiResponse<MailReport> createDailySummary() {
+	public ApiResponse<List<MailReport>> createDailySummary() {
 		return ApiResponse.ok("daily mail report created", mailReportService.createDailySummaryReport());
 	}
 
