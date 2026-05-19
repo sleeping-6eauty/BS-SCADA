@@ -44,8 +44,7 @@
               <div class="line-axis"></div>
               <div v-for="zone in zoneColumns" :key="zone.key" class="zone-heading">
                 <strong>{{ zone.title }}</strong>
-                <span>{{ zone.name }}</span>
-                <em>({{ zone.code }})</em>
+                <span>{{ zone.name }}({{ zone.code }})</span>
               </div>
 
               <template v-for="line in productionLines" :key="line.key">
@@ -66,38 +65,25 @@
                     @click="selectLayoutStation(station)"
                   >
                     <span class="node-icon" aria-hidden="true">
-                      <svg v-if="station.type === 'plf'" viewBox="0 0 80 58">
-                        <path d="M10 44h60M16 44V24l14 8 12-14 22 16v10M22 27l36 13M16 20l48 14M30 32v12M48 30v14M64 34v10" />
-                      </svg>
-                      <svg v-else-if="station.type === 'jig'" viewBox="0 0 80 58">
-                        <path d="M14 37h52M20 36l7-14h27l8 14M28 22l10-8h16l8 8M26 38v8M58 38v8M18 46h10M52 46h10M12 30h8M60 30h8" />
-                      </svg>
-                      <svg v-else-if="station.type === 'rob'" viewBox="0 0 80 58">
-                        <path d="M22 45h28M29 45V34M26 34l-9 8M33 30l16-16M47 13l12 11M59 24l7-7M53 30l8 6" />
-                        <circle cx="31" cy="29" r="8" />
-                        <circle cx="50" cy="13" r="7" />
-                      </svg>
-                      <svg v-else-if="station.type === 'wld'" viewBox="0 0 80 58">
-                        <path d="M20 42l24-24 12 12-24 24-12-12ZM42 20l8-8M54 18l9-3M57 27h10M52 35l7 7M35 24l11 11" />
-                      </svg>
-                      <svg v-else-if="station.type === 'slr'" viewBox="0 0 80 58">
-                        <path d="M18 44h46M25 40h26M38 40V18M48 38V14M55 36V20M31 30c2-9 9-15 18-16M30 34h-8M58 18h6M22 36v8M64 34v10" />
-                      </svg>
-                      <svg v-else viewBox="0 0 80 58">
-                        <path d="M18 20h44v28H18zM28 20l4-7h16l4 7" />
-                        <circle cx="40" cy="34" r="10" />
-                      </svg>
+                      {{ equipmentTypeIcons[station.type] ?? '🏗️' }}
                     </span>
                     <strong>{{ station.label }}</strong>
                     <span class="node-status">{{ layoutStatusText[station.status] }}</span>
                   </button>
 
-                  <div v-if="stationIndex < line.stations.length - 1" class="conveyor-link" aria-hidden="true">
-                    <span>CNV</span>
+                  <button
+                    v-if="stationIndex < line.stations.length - 1"
+                    type="button"
+                    class="conveyor-link"
+                    :class="line.conveyor.status"
+                    :aria-label="`${line.label} ${line.conveyor.label} 상세 보기`"
+                    @click="selectLayoutStation(line.conveyor)"
+                  >
+                    <span>{{ line.conveyor.label }}</span>
                     <div class="conveyor-track">
                       <i v-for="index in 4" :key="index"></i>
                     </div>
-                  </div>
+                  </button>
                 </div>
               </template>
             </div>
@@ -185,6 +171,45 @@
               <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
               <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
             </dl>
+
+            <div v-if="isConveyorSelected" class="inverter-control">
+              <div class="control-header">
+                <h4>인버터 제어</h4>
+                <span>API 미연결</span>
+              </div>
+              <div class="control-grid">
+                <div class="control-box">
+                  <span>주파수</span>
+                  <strong>{{ currentConveyorControl.frequency }} Hz</strong>
+                  <div class="control-actions">
+                    <button type="button" @click="adjustConveyorFrequency(-5)">-5</button>
+                    <button type="button" @click="adjustConveyorFrequency(5)">+5</button>
+                  </div>
+                </div>
+                <div class="control-box">
+                  <span>회전 여부</span>
+                  <button
+                    type="button"
+                    class="state-button"
+                    :class="{ active: currentConveyorControl.rotating }"
+                    @click="setConveyorRotation(true)"
+                  >
+                    {{ currentConveyorControl.rotating ? '회전 중' : '회전 시작' }}
+                  </button>
+                </div>
+                <div class="control-box">
+                  <span>정지 여부</span>
+                  <button
+                    type="button"
+                    class="state-button stop"
+                    :class="{ active: currentConveyorControl.stopped }"
+                    @click="setConveyorRotation(false)"
+                  >
+                    {{ currentConveyorControl.stopped ? '정지 중' : '정지' }}
+                  </button>
+                </div>
+              </div>
+            </div>
 
             <h4 class="sub-title">주요 데이터</h4>
             <div class="metrics-grid">
@@ -303,7 +328,7 @@ const equipmentTypeIcons = {
   wld: '🔥',
   slr: '🖌️',
   vsi: '👁️',
-  cnv: '↔️',
+  cnv: '🔄',
   robot: '🤖',
   nutrunner: '📐',
 }
@@ -336,16 +361,31 @@ const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeI
   })),
 )
 
+const formatEquipmentId = (code, lineNo) => `${code}-${String(lineNo).padStart(3, '0')}`
+
 const createStation = (lineNo, type, zone, status) => ({
-  id: `${type}-${lineNo}`,
-  label: `${type.toUpperCase()}-${lineNo}`,
+  id: formatEquipmentId(type.toUpperCase(), lineNo),
+  label: formatEquipmentId(type.toUpperCase(), lineNo),
   type,
   status: status ?? 'running',
   zone,
   line: `Line ${lineNo}`,
   manufacturer: 'BS-SCADA',
-  equipment_id: `${type}-${lineNo}`,
-  equipment_name: `${type.toUpperCase()}-${lineNo}`,
+  equipment_id: formatEquipmentId(type.toUpperCase(), lineNo),
+  equipment_name: formatEquipmentId(type.toUpperCase(), lineNo),
+  line_no: `Line ${lineNo}`,
+})
+
+const createConveyorStation = (lineNo, status = 'running') => ({
+  id: formatEquipmentId('CNV', lineNo),
+  label: formatEquipmentId('CNV', lineNo),
+  type: 'cnv',
+  status,
+  zone: 'Line Conveyor',
+  line: `Line ${lineNo}`,
+  manufacturer: 'BS-SCADA',
+  equipment_id: formatEquipmentId('CNV', lineNo),
+  equipment_name: formatEquipmentId('CNV', lineNo),
   line_no: `Line ${lineNo}`,
 })
 
@@ -359,14 +399,20 @@ const createLineStations = (lineNo, statuses) => [
 ]
 
 const productionLines = [
-  { key: 'line-1', no: 1, label: 'Line 1', stations: createLineStations(1, { slr: 'idle' }) },
-  { key: 'line-2', no: 2, label: 'Line 2', stations: createLineStations(2, { rob: 'idle' }) },
-  { key: 'line-3', no: 3, label: 'Line 3', stations: createLineStations(3, { rob: 'stop' }) },
+  { key: 'line-1', no: 1, label: 'Line 1', conveyor: createConveyorStation(1), stations: createLineStations(1, { slr: 'idle' }) },
+  { key: 'line-2', no: 2, label: 'Line 2', conveyor: createConveyorStation(2, 'idle'), stations: createLineStations(2, { rob: 'idle' }) },
+  { key: 'line-3', no: 3, label: 'Line 3', conveyor: createConveyorStation(3), stations: createLineStations(3, { rob: 'stop' }) },
 ]
+
+const conveyorControls = reactive({
+  'CNV-001': { frequency: 45, rotating: true, stopped: false },
+  'CNV-002': { frequency: 35, rotating: false, stopped: true },
+  'CNV-003': { frequency: 40, rotating: true, stopped: false },
+})
 
 // 설비 유형별 센서 데이터 라벨
 const getSensorDisplayLabels = (type) => {
-  if (type === 'robot') {
+  if (type === 'robot' || type === 'rob') {
     return {
       sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
       sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
@@ -378,6 +424,14 @@ const getSensorDisplayLabels = (type) => {
       sensor1: { label: '현재 온도', key: 'weld_voltage_ac', unit: '℃' },
       sensor2: { label: '전류', key: 'weld_current_ac', unit: 'A' },
       sensor3: { label: '사이클 타임', key: 'cycle_time', unit: 's' },
+      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+    }
+  }
+  if (['plf', 'jig', 'wld', 'slr', 'vsi'].includes(type)) {
+    return {
+      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
+      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
+      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
       sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
     }
   }
@@ -414,7 +468,7 @@ const selectLayoutStation = (station) => {
     id: station.id,
     name: station.label,
     status: station.status,
-    type: station.type === 'rob' ? 'robot' : 'nutrunner',
+    type: station.type,
     zone: station.zone,
     line: station.line,
     layoutType: station.type,
@@ -449,14 +503,39 @@ const goToAlarmPage = () => {
   router.push('/equipment-alarm')
 }
 
+const isConveyorSelected = computed(() => selectedEquipment.value?.layoutType === 'cnv')
+
+const currentConveyorControl = computed(() => {
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  return conveyorControls[id] ?? { frequency: 0, rotating: false, stopped: true }
+})
+
+const adjustConveyorFrequency = (amount) => {
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  if (!id || !conveyorControls[id]) return
+  const nextFrequency = conveyorControls[id].frequency + amount
+  conveyorControls[id].frequency = Math.min(Math.max(nextFrequency, 0), 60)
+}
+
+const setConveyorRotation = (rotating) => {
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  if (!id || !conveyorControls[id]) return
+  conveyorControls[id].rotating = rotating
+  conveyorControls[id].stopped = !rotating
+}
+
 // 설비별 최신 로그 데이터 캐시
 const equipmentLogCache = reactive({})
+
+const shouldApplyLogStatus = (logData) => {
+  return logData?.status && logData.status !== 'unknown'
+}
 
 // 테이블 데이터
 const equipmentRows = computed(() => {
   return monitoringEquipmentCatalog.map((eq) => {
     const cachedLog = equipmentLogCache[eq.id]
-    const status = cachedLog?.status || eq.status
+    const status = shouldApplyLogStatus(cachedLog) ? cachedLog.status : eq.status
 
     return {
       id: eq.id,
@@ -550,7 +629,9 @@ watch(selectedEquipment, async (newEquipment) => {
     // 최신 로그 데이터 로드
     const logData = await fetchLatestLog(newEquipment.id)
     latestLog.data = logData
-    equipmentLogCache[newEquipment.id] = logData
+    if (shouldApplyLogStatus(logData)) {
+      equipmentLogCache[newEquipment.id] = logData
+    }
     
     // 가동 시간 로드
     const timeData = await fetchEquipmentRunningTime(newEquipment.id)
@@ -559,7 +640,9 @@ watch(selectedEquipment, async (newEquipment) => {
     // 레이아웃 상태 업데이트
     const layoutItem = layoutItems.value.find(item => item.id === newEquipment.id)
     if (layoutItem) {
-      layoutItem.status = logData.status
+      if (shouldApplyLogStatus(logData)) {
+        layoutItem.status = logData.status
+      }
     }
   } catch (err) {
     console.error('Failed to fetch equipment data:', err)
@@ -869,11 +952,11 @@ h2 span {
   font-weight: 950;
 }
 
-.zone-heading span,
-.zone-heading em {
+.zone-heading span {
   font-style: normal;
   font-size: 13px;
   font-weight: 900;
+  white-space: nowrap;
 }
 
 .line-heading {
@@ -941,6 +1024,8 @@ h2 span {
   height: 46px;
   display: grid;
   place-items: center;
+  font-size: 36px;
+  line-height: 1;
 }
 
 .node-icon svg {
@@ -971,17 +1056,29 @@ h2 span {
   top: 50%;
   z-index: 2;
   width: calc(100% - 108px);
-  display: flex;
-  align-items: center;
-  gap: 7px;
+  height: 42px;
+  display: grid;
+  align-items: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
   transform: translateY(-50%);
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .conveyor-link span {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
   color: #58667a;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 950;
+  line-height: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #c8d1df;
 }
 
 .conveyor-track {
@@ -993,6 +1090,24 @@ h2 span {
   grid-template-columns: repeat(4, 1fr);
   border: 2px solid #8c98a9;
   background: #f4f7fb;
+}
+
+.conveyor-link:hover .conveyor-track,
+.conveyor-link:focus-visible .conveyor-track {
+  border-color: #0f75d8;
+  box-shadow: 0 0 0 3px rgba(15, 117, 216, 0.13);
+}
+
+.conveyor-link.running .conveyor-track {
+  border-color: #27bd78;
+}
+
+.conveyor-link.idle .conveyor-track {
+  border-color: #ffae18;
+}
+
+.conveyor-link.stop .conveyor-track {
+  border-color: #ff3030;
 }
 
 .conveyor-track::before,
@@ -1025,6 +1140,7 @@ h2 span {
 
 .equipment-node.running {
   border-color: #27bd78;
+  background: #f0fbf5;
 }
 
 .equipment-node.running .node-icon,
@@ -1039,6 +1155,7 @@ h2 span {
 
 .equipment-node.idle {
   border-color: #ffae18;
+  background: #fff8eb;
 }
 
 .equipment-node.idle .node-icon,
@@ -1053,6 +1170,7 @@ h2 span {
 
 .equipment-node.stop {
   border-color: #ff3030;
+  background: #fff1f2;
 }
 
 .equipment-node.stop .node-icon,
@@ -1067,6 +1185,7 @@ h2 span {
 
 .equipment-node.unknown {
   border-color: #a5afbd;
+  background: #f4f6f9;
 }
 
 .equipment-node.unknown .node-icon,
@@ -1428,6 +1547,96 @@ tbody tr {
   font-size: 15px;
   font-weight: 950;
   color: #0d2448;
+}
+
+.inverter-control {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #dfe8f4;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.control-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.control-header h4 {
+  font-size: 15px;
+  font-weight: 950;
+  color: #0d2448;
+}
+
+.control-header span {
+  color: #7d8898;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-box {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e2eaf5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.control-box span {
+  display: block;
+  margin-bottom: 6px;
+  color: #6b7c94;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.control-box strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #0d2448;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.control-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.control-actions button,
+.state-button {
+  min-width: 48px;
+  height: 30px;
+  border: 1px solid #c8d6e8;
+  border-radius: 7px;
+  background: #fff;
+  color: #35516e;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.state-button {
+  width: 100%;
+}
+
+.state-button.active {
+  color: #fff;
+  background: #12a985;
+  border-color: #12a985;
+}
+
+.state-button.stop.active {
+  background: #fa2c45;
+  border-color: #fa2c45;
 }
 
 .metrics-grid {
