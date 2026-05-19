@@ -10,6 +10,7 @@ public class RagSimilarCase {
 	private String alarmStatus;
 	private String alarmMemo;
 	private LocalDateTime timestamp;
+	private Double similarityScore;
 
 	public Long getAlarmId() {
 		return alarmId;
@@ -57,5 +58,13 @@ public class RagSimilarCase {
 
 	public void setTimestamp(LocalDateTime timestamp) {
 		this.timestamp = timestamp;
+	}
+
+	public Double getSimilarityScore() {
+		return similarityScore;
+	}
+
+	public void setSimilarityScore(Double similarityScore) {
+		this.similarityScore = similarityScore;
 	}
 }

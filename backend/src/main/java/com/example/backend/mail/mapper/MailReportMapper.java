@@ -88,6 +88,26 @@ public interface MailReportMapper {
 
 	@Select("""
 		SELECT
+			alarm_id AS alarmId,
+			equipment_id AS equipmentId,
+			alarm_type AS alarmType,
+			alarm_status AS alarmStatus,
+			alarm_memo AS alarmMemo,
+			alarm_text AS alarmText,
+			NULL AS healthScore,
+			NULL AS recipientUserId,
+			NULL AS recipientEmail,
+			NULL AS recipientName,
+			`timestamp` AS timestamp
+		FROM alarm_log
+		WHERE alarm_status = 'RESOLVED'
+		ORDER BY COALESCE(updated_at, created_at, `timestamp`) DESC, alarm_id DESC
+		LIMIT #{limit}
+		""")
+	List<AlarmContext> findResolvedAlarmContextsForIndex(@Param("limit") int limit);
+
+	@Select("""
+		SELECT
 			al.alarm_id AS alarmId,
 			al.equipment_id AS equipmentId,
 			al.alarm_type AS alarmType,
@@ -105,6 +125,7 @@ public interface MailReportMapper {
 		INNER JOIN users u ON u.user_id = ue.user_id
 		WHERE al.alarm_id = #{alarmId}
 		  AND e.health_score < #{threshold}
+		  AND al.alarm_status IN ('OPEN', 'IN_PROGRESS')
 		  AND (u.status IS NULL OR u.status = 'active')
 		  AND NOT EXISTS (
 		  	SELECT 1
@@ -136,6 +157,7 @@ public interface MailReportMapper {
 		INNER JOIN user_equipment ue ON ue.equipment_id = al.equipment_id
 		INNER JOIN users u ON u.user_id = ue.user_id
 		WHERE e.health_score < #{threshold}
+		  AND al.alarm_status IN ('OPEN', 'IN_PROGRESS')
 		  AND (u.status IS NULL OR u.status = 'active')
 		  AND NOT EXISTS (
 		  	SELECT 1
@@ -209,7 +231,7 @@ public interface MailReportMapper {
 			equipment_id AS equipmentId,
 			alarm_type AS alarmType,
 			alarm_status AS alarmStatus,
-			alarm_memo AS alarmMemo,
+			COALESCE(alarm_text, alarm_memo) AS alarmMemo,
 			`timestamp` AS timestamp
 		FROM alarm_log
 		WHERE alarm_id != #{alarmId}

@@ -4,9 +4,14 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 
+import com.example.backend.mail.analysis.AlarmAnalysisResult;
+import com.example.backend.mail.analysis.AlarmAnalysisService;
 import com.example.backend.mail.dto.AlarmContext;
 import com.example.backend.mail.dto.DailyMailRecipientSummary;
 import com.example.backend.mail.dto.DailyMailReportItem;
@@ -14,6 +19,7 @@ import com.example.backend.mail.dto.MailReport;
 import com.example.backend.mail.dto.MailReportCreateRequest;
 import com.example.backend.mail.dto.RagSimilarCase;
 import com.example.backend.mail.mapper.MailReportMapper;
+import com.example.backend.mail.rag.VectorRagService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -24,15 +30,21 @@ public class MailReportService {
 
 	private final MailReportMapper mailReportMapper;
 	private final MailDeliveryService mailDeliveryService;
+	private final VectorRagService vectorRagService;
+	private final AlarmAnalysisService alarmAnalysisService;
 	private final ZoneId reportZoneId;
 
 	public MailReportService(
 		MailReportMapper mailReportMapper,
 		MailDeliveryService mailDeliveryService,
+		VectorRagService vectorRagService,
+		AlarmAnalysisService alarmAnalysisService,
 		@Value("${mail.report.timezone:Asia/Seoul}") String reportTimezone
 	) {
 		this.mailReportMapper = mailReportMapper;
 		this.mailDeliveryService = mailDeliveryService;
+		this.vectorRagService = vectorRagService;
+		this.alarmAnalysisService = alarmAnalysisService;
 		this.reportZoneId = ZoneId.of(reportTimezone);
 	}
 
@@ -95,19 +107,31 @@ public class MailReportService {
 
 	public List<MailReport> createLowHealthAlarmReportsForAlarm(long alarmId, double healthScoreThreshold) {
 		List<AlarmContext> alarms = mailReportMapper.findLowHealthAlarmRecipientsByAlarmId(alarmId, healthScoreThreshold);
-		return alarms.stream()
-			.map(this::createLowHealthAlarmReport)
-			.toList();
+		return createLowHealthAlarmReports(alarms);
 	}
 
 	public List<MailReport> createPendingLowHealthAlarmReports(double healthScoreThreshold, int limit) {
 		List<AlarmContext> alarms = mailReportMapper.findLowHealthAlarmRecipientsWithoutMailReport(healthScoreThreshold, limit);
-		return alarms.stream()
-			.map(this::createLowHealthAlarmReport)
-			.toList();
+		return createLowHealthAlarmReports(alarms);
 	}
 
-	private MailReport createLowHealthAlarmReport(AlarmContext alarm) {
+	private List<MailReport> createLowHealthAlarmReports(List<AlarmContext> alarmRecipients) {
+		Map<Long, List<AlarmContext>> recipientsByAlarm = new LinkedHashMap<>();
+		for (AlarmContext alarmRecipient : alarmRecipients) {
+			if (alarmRecipient.getAlarmId() == null) {
+				continue;
+			}
+			recipientsByAlarm.computeIfAbsent(alarmRecipient.getAlarmId(), key -> new ArrayList<>()).add(alarmRecipient);
+		}
+
+		List<MailReport> reports = new ArrayList<>();
+		for (List<AlarmContext> recipients : recipientsByAlarm.values()) {
+			reports.add(createLowHealthAlarmReport(recipients.get(0), recipients));
+		}
+		return reports;
+	}
+
+	private MailReport createLowHealthAlarmReport(AlarmContext alarm, List<AlarmContext> recipients) {
 		MailReport mailReport = new MailReport();
 		mailReport.setAlarmId(alarm.getAlarmId());
 		mailReport.setReportType("ALARM");
@@ -119,7 +143,12 @@ public class MailReportService {
 		mailReport.setMailText(buildLowHealthAlarmText(alarm));
 
 		mailReportMapper.insert(mailReport);
-		mailDeliveryService.send(mailReport);
+		for (AlarmContext recipient : recipients) {
+			mailReport.setRecipientUserId(recipient.getRecipientUserId());
+			mailReport.setRecipientEmail(recipient.getRecipientEmail());
+			mailReport.setRecipientName(recipient.getRecipientName());
+			mailDeliveryService.send(mailReport);
+		}
 		return mailReport;
 	}
 
@@ -134,17 +163,15 @@ public class MailReportService {
 			return baseText + "\n\n[RAG Response]\n- Alarm context not found, so only base content was sent.";
 		}
 
-		List<RagSimilarCase> similarCases = mailReportMapper.findSimilarResolvedCases(
-			alarm.getAlarmId(),
-			alarm.getEquipmentId(),
-			alarm.getAlarmType(),
-			SIMILAR_CASE_LIMIT
-		);
-
-		return baseText + "\n\n" + buildRagSection(alarm, similarCases);
+		List<RagSimilarCase> similarCases = vectorRagService.findSimilarCases(alarm, SIMILAR_CASE_LIMIT);
+		AlarmAnalysisResult analysis = alarmAnalysisService.analyze(alarm, similarCases);
+		return baseText + "\n\n" + buildRagSection(alarm, similarCases) + "\n\n" + buildPlainAnalysisSection(analysis);
 	}
 
 	private String buildLowHealthAlarmText(AlarmContext alarm) {
+		List<RagSimilarCase> similarCases = vectorRagService.findSimilarCases(alarm, SIMILAR_CASE_LIMIT);
+		AlarmAnalysisResult analysis = alarmAnalysisService.analyze(alarm, similarCases);
+
 		StringBuilder builder = new StringBuilder();
 		builder.append("안녕하세요, 설비통합관리시스템입니다.\n\n");
 		builder.append("금일 ").append(nullSafe(alarm.getEquipmentId()))
@@ -155,24 +182,15 @@ public class MailReportService {
 		builder.append("- 이상 유형: ").append(nullSafe(alarm.getAlarmType())).append("\n\n");
 		builder.append("- 현재 상태: ").append(nullSafe(alarm.getAlarmStatus())).append("\n\n");
 		builder.append("- Health score: ").append(alarm.getHealthScore() == null ? "UNKNOWN" : alarm.getHealthScore()).append("\n\n");
-		builder.append("- AI 판단 결과: 정상 운전 조건에서 벗어난 비정상 패턴 감지\n\n");
+		builder.append("- AI 판단 결과: ").append(trimText(analysis.getAiJudgment(), 140)).append("\n\n");
 		builder.append("2. 주요 감지 내용\n\n");
-		builder.append("- ").append(detailText(alarm)).append("\n\n");
-		builder.append("- 현재 알람 상태와 설비 건전도 점수를 기준으로 담당자 확인이 필요합니다.\n\n");
-		builder.append("- 해당 설비에는 추가 점검 또는 조치가 필요할 수 있습니다.\n\n");
+		appendBullets(builder, analysis.getDetectionDetails());
 		builder.append("3. 예상 영향\n\n");
-		builder.append("- 설비 품질 저하 가능성\n\n");
-		builder.append("- 후속 공정 지연 또는 재작업 가능성 증가\n\n");
-		builder.append("- 장시간 방치 시 운영 리스크 증가 가능성\n\n");
+		appendBullets(builder, analysis.getExpectedImpacts());
 		builder.append("4. RAG 기반 유사 사례\n\n");
-
-		List<RagSimilarCase> similarCases = mailReportMapper.findSimilarResolvedCases(
-			alarm.getAlarmId(),
-			alarm.getEquipmentId(),
-			alarm.getAlarmType(),
-			SIMILAR_CASE_LIMIT
-		);
 		builder.append(buildKoreanRagSection(similarCases));
+		builder.append("\n\n5. MCP/LLM 분석 기반 추천 조치\n\n");
+		appendBullets(builder, analysis.getRecommendedActions());
 		return builder.toString();
 	}
 
@@ -180,20 +198,10 @@ public class MailReportService {
 		return "[설비 이상 알림] " + nullSafe(alarm.getEquipmentId()) + " " + nullSafe(alarm.getAlarmType()) + " 감지";
 	}
 
-	private String detailText(AlarmContext alarm) {
-		if (alarm.getAlarmText() != null && !alarm.getAlarmText().isBlank()) {
-			return alarm.getAlarmText().trim();
-		}
-		if (alarm.getAlarmMemo() != null && !alarm.getAlarmMemo().isBlank()) {
-			return alarm.getAlarmMemo().trim();
-		}
-		return "상세 알람 내용이 등록되지 않았습니다.";
-	}
-
 	private String buildKoreanRagSection(List<RagSimilarCase> similarCases) {
 		StringBuilder builder = new StringBuilder();
 		if (similarCases == null || similarCases.isEmpty()) {
-			builder.append("과거 유사 사례 검색 결과, 아래 사례와 유사한 패턴이 확인되었습니다.\n\n");
+			builder.append("과거 유사 사례 검색 결과, 참고할 수 있는 해결 사례가 아직 없습니다.\n\n");
 			builder.append("- 유사 사례 1: 점검 가능한 유사 사례가 없습니다.\n\n");
 			builder.append("  - 추천 방안: 안전 확인 후 설비 상태 점검\n");
 			builder.append("  - 조치 내용: 설비 로그 확인 및 육안 점검\n");
@@ -209,6 +217,9 @@ public class MailReportService {
 				.append(formatTime(similar.getTimestamp())).append("\n\n");
 			builder.append("  - 추천 방안: ").append(trimText(similar.getAlarmMemo(), 80)).append("\n");
 			builder.append("  - 조치 내용: 과거 RESOLVED 처리 내용을 참고하여 점검\n");
+			if (similar.getSimilarityScore() != null) {
+				builder.append("  - 유사도 점수: ").append(String.format("%.4f", similar.getSimilarityScore())).append("\n");
+			}
 			if (i < similarCases.size() - 1) {
 				builder.append("\n");
 			}
@@ -235,9 +246,23 @@ public class MailReportService {
 			builder.append(i + 1).append(". ");
 			builder.append("Case#").append(similar.getAlarmId()).append(" ");
 			builder.append("(").append(formatTime(similar.getTimestamp())).append(") ");
-			builder.append(trimText(similar.getAlarmMemo(), 90)).append("\n");
+			builder.append(trimText(similar.getAlarmMemo(), 90));
+			if (similar.getSimilarityScore() != null) {
+				builder.append(" (score ").append(String.format("%.4f", similar.getSimilarityScore())).append(")");
+			}
+			builder.append("\n");
 		}
 		builder.append("- Common recommendation: replay similar actions, then monitor recurrence for 30 minutes.");
+		return builder.toString();
+	}
+
+	private String buildPlainAnalysisSection(AlarmAnalysisResult analysis) {
+		StringBuilder builder = new StringBuilder();
+		builder.append("[MCP/LLM Analysis]\n");
+		builder.append("- AI judgment: ").append(trimText(analysis.getAiJudgment(), 140)).append("\n");
+		builder.append("- Detection details: ").append(String.join(" / ", analysis.getDetectionDetails())).append("\n");
+		builder.append("- Expected impacts: ").append(String.join(" / ", analysis.getExpectedImpacts())).append("\n");
+		builder.append("- Recommended actions: ").append(String.join(" / ", analysis.getRecommendedActions()));
 		return builder.toString();
 	}
 
@@ -263,6 +288,16 @@ public class MailReportService {
 		}
 		builder.append("- Generated at: ").append(formatTime(LocalDateTime.now(reportZoneId)));
 		return builder.toString();
+	}
+
+	private void appendBullets(StringBuilder builder, List<String> items) {
+		if (items == null || items.isEmpty()) {
+			builder.append("- 확인 가능한 분석 내용이 없습니다.\n\n");
+			return;
+		}
+		for (String item : items) {
+			builder.append("- ").append(trimText(item, 140)).append("\n\n");
+		}
 	}
 
 	private String trimText(String source, int maxLength) {
