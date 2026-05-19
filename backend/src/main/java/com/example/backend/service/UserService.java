@@ -135,19 +135,8 @@ public class UserService {
         return equipments;
     }
 
-    public List<User> listUsers(String filterRole) {
-        List<User> users = userMapper.findAll();
-
-        if (filterRole == null || filterRole.isBlank()) {
-            return users;
-        }
-
-        return users.stream()
-                .filter(user ->
-                        user.getRole() != null
-                                && user.getRole().equalsIgnoreCase(filterRole)
-                )
-                .collect(Collectors.toList());
+    public List<User> listUsers(String role, String status) {
+        return userMapper.findAll(role, status);
     }
 
     public User updateUser(Long id, UpdateUserRequest request) {
@@ -182,7 +171,9 @@ public class UserService {
         return existing;
     }
 
+    @Transactional
     public void deleteUser(Long id) {
+        userEquipmentMapper.deleteByUserId(id);
         userMapper.deleteById(id);
     }
 }

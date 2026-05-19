@@ -26,6 +26,7 @@
     <insert id="assignEquipmentToUser" parameterType="map">
         INSERT INTO user_equipment (user_id, equipment_id)
         VALUES (#{userId}, #{equipmentId})
+        ON DUPLICATE KEY UPDATE equipment_id = VALUES(equipment_id)
     </insert>
 
     <insert id="assignEquipmentsToUser" parameterType="map">

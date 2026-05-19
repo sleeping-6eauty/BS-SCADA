@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.backend.mapper.DashboardMapper">
+
+    <!-- ============================================================
+         Status Duration (overlap calculation)
+         ============================================================ -->
+    <select id="getStatusDurations" resultType="map">
+        <![CDATA[
+        SELECT
+            IFNULL(SUM(CASE WHEN status = 'RUN'   THEN overlap_sec ELSE 0 END), 0) AS run_time_sec,
+            IFNULL(SUM(CASE WHEN status = 'IDLE'  THEN overlap_sec ELSE 0 END), 0) AS idle_time_sec,
+            IFNULL(SUM(CASE WHEN status = 'STOP'  THEN overlap_sec ELSE 0 END), 0) AS stop_time_sec,
+            IFNULL(SUM(CASE WHEN status = 'ALARM' THEN overlap_sec ELSE 0 END), 0) AS alarm_time_sec
+        FROM (
+            SELECT
+                status,
+                TIMESTAMPDIFF(
+                    SECOND,
+                    GREATEST(start_time, #{from}),
+                    LEAST(IFNULL(end_time, #{to}), #{to})
+                ) AS overlap_sec
+            FROM equipment_status_log
+            WHERE equipment_id = #{equipmentId}
+              AND start_time < #{to}
+              AND IFNULL(end_time, #{to}) > #{from}
+        ) t
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Vision Quality Counts
+         ============================================================ -->
+    <select id="getVisionQualityCounts" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*)                                                         AS total_count,
+            IFNULL(SUM(CASE WHEN body_quality = 'GOOD' THEN 1 ELSE 0 END), 0) AS good_count,
+            IFNULL(SUM(CASE WHEN body_quality = 'NG'   THEN 1 ELSE 0 END), 0) AS bad_count
+        FROM vision_inspection_log
+        WHERE line_no = #{lineNo}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Line Config
+         ============================================================ -->
+    <select id="getIdealCycleTime" resultType="java.lang.Double">
+        SELECT ideal_cycle_time_sec FROM line_config WHERE line_no = #{lineNo}
+    </select>
+
+    <select id="getAllLineNos" resultType="string">
+        SELECT line_no FROM line_config ORDER BY line_no
+    </select>
+
+    <!-- ============================================================
+         Line Summary CRUD
+         ============================================================ -->
+    <select id="getLineSummary" resultType="map">
+        SELECT
+            run_time_sec, idle_time_sec, stop_time_sec, alarm_time_sec,
+            total_count, good_count, bad_count,
+            availability, performance, quality, oee
+        FROM line_summary
+        WHERE line_no = #{lineNo}
+          AND summary_start_time = #{from}
+          AND summary_end_time   = #{to}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteLineSummary">
+        DELETE FROM line_summary
+        WHERE line_no = #{lineNo}
+          AND summary_start_time = #{from}
+          AND summary_end_time   = #{to}
+    </delete>
+
+    <insert id="insertLineSummary">
+        INSERT INTO line_summary (
+            line_no, summary_start_time, summary_end_time,
+            planned_time_sec, run_time_sec, idle_time_sec, stop_time_sec, alarm_time_sec,
+            total_count, good_count, bad_count,
+            availability, performance, quality, oee,
+            created_at
+        ) VALUES (
+            #{lineNo}, #{summaryStartTime}, #{summaryEndTime},
+            #{plannedTimeSec}, #{runTimeSec}, #{idleTimeSec}, #{stopTimeSec}, #{alarmTimeSec},
+            #{totalCount}, #{goodCount}, #{badCount},
+            #{availability}, #{performance}, #{quality}, #{oee},
+            NOW()
+        )
+    </insert>
+
+    <!-- ============================================================
+         Equipment Failure Count
+         ============================================================ -->
+    <select id="getEquipmentFailureCount" resultType="int">
+        <![CDATA[
+        SELECT COUNT(*)
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'ALARM'
+          AND start_time >= #{from}
+          AND start_time < #{to}
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Accumulated Run Hours (all time)
+         ============================================================ -->
+    <select id="getTotalAccumulatedRunHours" resultType="java.lang.Double">
+        SELECT IFNULL(SUM(duration_sec), 0) / 3600.0
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'RUN'
+    </select>
+
+    <!-- ============================================================
+         Average Daily Run Hours (last 7 days)
+         ============================================================ -->
+    <select id="getAvgDailyRunHours7d" resultType="java.lang.Double">
+        <![CDATA[
+        SELECT IFNULL(SUM(duration_sec), 0) / 3600.0 / 7.0
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'RUN'
+          AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Alarm Count (last 24h)
+         ============================================================ -->
+    <select id="getAlarmCount24h" resultType="int">
+        <![CDATA[
+        SELECT COUNT(*)
+        FROM alarm_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Recent Alarms
+         ============================================================ -->
+    <select id="getRecentAlarms" resultType="com.example.backend.dto.dashboard.DashboardAlarmDto">
+        SELECT
+            alarm_id       AS alarmId,
+            equipment_id   AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            alarm_type     AS alarmType,
+            alarm_text     AS alarmText,
+            alarm_memo     AS alarmMemo,
+            alarm_status   AS alarmStatus
+        FROM alarm_log
+        ORDER BY timestamp DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- ============================================================
+         Equipment Status Cards
+         ============================================================ -->
+    <resultMap id="statusCardResultMap" type="com.example.backend.dto.dashboard.EquipmentStatusCardDto">
+        <result property="equipmentId"     column="equipment_id" />
+        <result property="equipmentName"   column="equipment_name" />
+        <result property="lineNo"          column="line_no" />
+        <result property="zone"            column="zone" />
+        <result property="healthScore"     column="health_score" />
+        <result property="currentStatus"   column="current_status" />
+        <result property="activeAlarmCount" column="active_alarm_count" />
+    </resultMap>
+
+    <select id="getEquipmentStatusCards" resultMap="statusCardResultMap">
+        SELECT
+            e.equipment_id,
+            e.equipment_name,
+            e.line_no,
+            e.zone,
+            e.health_score,
+            COALESCE(ls.status, 'UNKNOWN') AS current_status,
+            COALESCE(ac.active_alarm_count, 0)  AS active_alarm_count
+        FROM equipment e
+        LEFT JOIN (
+            SELECT esl.equipment_id, esl.status
+            FROM equipment_status_log esl
+            INNER JOIN (
+                SELECT equipment_id, MAX(start_time) AS max_start_time
+                FROM equipment_status_log
+                GROUP BY equipment_id
+            ) lm ON esl.equipment_id = lm.equipment_id
+                AND esl.start_time   = lm.max_start_time
+        ) ls ON e.equipment_id = ls.equipment_id
+        LEFT JOIN (
+            SELECT equipment_id, COUNT(*) AS active_alarm_count
+            FROM alarm_log
+            WHERE alarm_status != 'RESOLVED'
+            GROUP BY equipment_id
+        ) ac ON e.equipment_id = ac.equipment_id
+        ORDER BY e.equipment_id
+    </select>
+
+    <!-- ============================================================
+         Equipment Status Counts by Line
+         ============================================================ -->
+    <select id="getEquipmentStatusCountsByLine" resultType="map">
+        SELECT
+            IFNULL(SUM(CASE WHEN ls.status = 'RUN'   THEN 1 ELSE 0 END), 0) AS RUN,
+            IFNULL(SUM(CASE WHEN ls.status = 'IDLE'  THEN 1 ELSE 0 END), 0) AS IDLE,
+            IFNULL(SUM(CASE WHEN ls.status = 'STOP'  THEN 1 ELSE 0 END), 0) AS STOP,
+            IFNULL(SUM(CASE WHEN ls.status = 'ALARM' THEN 1 ELSE 0 END), 0) AS ALARM,
+            IFNULL(SUM(CASE WHEN ls.status IS NULL    THEN 1 ELSE 0 END), 0) AS UNKNOWN
+        FROM equipment e
+        LEFT JOIN (
+            SELECT esl.equipment_id, esl.status
+            FROM equipment_status_log esl
+            INNER JOIN (
+                SELECT equipment_id, MAX(start_time) AS max_start_time
+                FROM equipment_status_log
+                GROUP BY equipment_id
+            ) lm ON esl.equipment_id = lm.equipment_id
+                AND esl.start_time   = lm.max_start_time
+        ) ls ON e.equipment_id = ls.equipment_id
+        WHERE e.line_no = #{lineNo}
+    </select>
+
+    <!-- ============================================================
+         Avg Health Score by Line
+         ============================================================ -->
+    <select id="getAvgHealthScoreByLine" resultType="java.lang.Double">
+        SELECT AVG(health_score) FROM equipment WHERE line_no = #{lineNo}
+    </select>
+
+    <!-- ============================================================
+         Active Alarm Count by Line
+         ============================================================ -->
+    <select id="getActiveAlarmCountByLine" resultType="int">
+        SELECT COUNT(*)
+        FROM alarm_log al
+        INNER JOIN equipment e ON al.equipment_id = e.equipment_id
+        WHERE e.line_no = #{lineNo}
+          AND al.alarm_status != 'RESOLVED'
+    </select>
+
+    <!-- ============================================================
+         Equipment Summary CRUD
+         ============================================================ -->
+    <select id="getEquipmentSummaryFromDb" resultType="map">
+        SELECT
+            run_time_sec, idle_time_sec, stop_time_sec, alarm_time_sec,
+            availability, performance, quality, oee,
+            mttf_sec, mtbf_sec, mttr_sec,
+            health_score, remaining_life, replacement_date
+        FROM equipment_summary
+        WHERE equipment_id = #{equipmentId}
+          AND summary_start_time = #{from}
+          AND summary_end_time   = #{to}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteEquipmentSummary">
+        DELETE FROM equipment_summary
+        WHERE equipment_id = #{equipmentId}
+          AND summary_start_time = #{from}
+          AND summary_end_time   = #{to}
+    </delete>
+
+    <insert id="insertEquipmentSummary">
+        INSERT INTO equipment_summary (
+            equipment_id, summary_start_time, summary_end_time,
+            run_time_sec, idle_time_sec, stop_time_sec, alarm_time_sec,
+            availability, performance, quality, oee,
+            mttf_sec, mtbf_sec, mttr_sec,
+            health_score, remaining_life, replacement_date,
+            created_at
+        ) VALUES (
+            #{equipmentId}, #{summaryStartTime}, #{summaryEndTime},
+            #{runTimeSec}, #{idleTimeSec}, #{stopTimeSec}, #{alarmTimeSec},
+            #{availability}, #{performance}, #{quality}, #{oee},
+            #{mttfSec}, #{mtbfSec}, #{mttrSec},
+            #{healthScore}, #{remainingLife}, #{replacementDate},
+            NOW()
+        )
+    </insert>
+
+    <!-- ============================================================
+         Update Equipment Metrics
+         ============================================================ -->
+    <update id="updateEquipmentMetrics">
+        UPDATE equipment
+        SET health_score          = #{healthScore},
+            accumulated_run_hours = #{accumulatedRunHours},
+            remaining_life        = #{remainingLife},
+            replacement_date      = #{replacementDate}
+        WHERE equipment_id = #{equipmentId}
+    </update>
+
+    <!-- ============================================================
+         Sensor Abnormal Counts (last 1 hour from NOW)
+         ============================================================ -->
+
+    <!-- Panel Feeder: motor_current_a > 8, vacuum_pressure_kpa > -40, position_error_mm > 5 -->
+    <select id="getPanelFeederAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN motor_current_a > 8.0
+                              OR vacuum_pressure_kpa > -40
+                              OR position_error_mm > 5.0
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM panel_feeder_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+    <!-- Body Jig: clamp_pressure_bar < 4, pneumatic_pressure_bar < 4.5, clamp_position_mm > 5 -->
+    <select id="getBodyJigAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN clamp_pressure_bar < 4.0
+                              OR pneumatic_pressure_bar < 4.5
+                              OR clamp_position_mm > 5.0
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM body_jig_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+    <!-- Robot: axis_temp_max_c > 80, tool_offset_error_mm > 5 -->
+    <select id="getRobotAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN axis_temp_max_c > 80.0
+                              OR tool_offset_error_mm > 5.0
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM robot_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+    <!-- Spot Welder: weld_current_dc abnormal, weld_voltage_ac out of range -->
+    <select id="getSpotWelderAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN (status = 'RUN' AND weld_current_dc < 4.0)
+                              OR weld_current_dc > 15.0
+                              OR weld_voltage_ac < 170
+                              OR weld_voltage_ac > 250
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM spot_welder_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+    <!-- Sealer: dispense_pressure_bar > 8, sealer_temperature_c > 65, flow_rate_ml_s < 6 (RUN) -->
+    <select id="getSealerAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN dispense_pressure_bar > 8.0
+                              OR sealer_temperature_c > 65.0
+                              OR (status = 'RUN' AND flow_rate_ml_s < 6.0)
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM sealer_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+    <!-- Conveyor: motor_temperature_c > 75, motor_current_a > 8, moving_speed_m_s < 0.2 (RUN) -->
+    <select id="getConveyorAbnormalCount" resultType="map">
+        <![CDATA[
+        SELECT
+            COUNT(*) AS totalCount,
+            IFNULL(SUM(CASE WHEN motor_temperature_c > 75.0
+                              OR motor_current_a > 8.0
+                              OR (status = 'RUN' AND moving_speed_m_s < 0.2)
+                         THEN 1 ELSE 0 END), 0) AS abnormalCount
+        FROM conveyor_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        ]]>
+    </select>
+
+</mapper>

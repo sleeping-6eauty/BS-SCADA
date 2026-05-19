@@ -1,5 +1,6 @@
 package com.example.backend.domain;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 public class Equipment {
@@ -12,6 +13,8 @@ public class Equipment {
     private Float healthScore;
     private Float remainingLife;
     private LocalDate replacementDate;
+    private Integer expectedLifetimeHours;
+    private BigDecimal accumulatedRunHours;
 
     public String getEquipmentId() {
         return equipmentId;
@@ -84,4 +87,10 @@ public class Equipment {
     public void setReplacementDate(LocalDate replacementDate) {
         this.replacementDate = replacementDate;
     }
+
+    public Integer getExpectedLifetimeHours() { return expectedLifetimeHours; }
+    public void setExpectedLifetimeHours(Integer expectedLifetimeHours) { this.expectedLifetimeHours = expectedLifetimeHours; }
+
+    public BigDecimal getAccumulatedRunHours() { return accumulatedRunHours; }
+    public void setAccumulatedRunHours(BigDecimal accumulatedRunHours) { this.accumulatedRunHours = accumulatedRunHours; }
 }

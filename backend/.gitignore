@@ -7,6 +7,7 @@ target/
 backend/src/main/resources/application.properties
 application.properties
 application-*.properties
+.claude
 
 ### STS ###
 .apt_generated
