@@ -3,11 +3,32 @@
     <AppTopbar active-menu="설비 현황" />
 
     <main class="page-body">
+      <nav class="view-tabs" aria-label="설비 현황 보기 전환">
+        <button
+          type="button"
+          :class="{ active: activeView === 'layout' }"
+          @click="setActiveView('layout')"
+        >
+          라인 레이아웃
+        </button>
+        <button
+          type="button"
+          :class="{ active: activeView === 'list' }"
+          @click="setActiveView('list')"
+        >
+          설비 목록
+        </button>
+      </nav>
+
       <section class="left-column">
-        <section class="content-panel line-layout-section">
+        <section v-if="activeView === 'layout'" class="content-panel line-layout-section">
           <div class="panel-header">
             <div class="title-wrap">
-              <h2>라인 레이아웃 <span>(차체 용접 공정)</span></h2>
+              <h2>차체 공정 레이아웃</h2>
+              <span class="title-tooltip" tabindex="0" aria-label="공정 내 설비 위치와 가동 상태를 확인할 수 있습니다.">
+                ?
+                <em>공정 내 설비 위치와 가동 상태를 확인할 수 있습니다.</em>
+              </span>
             </div>
 
             <div class="legend-wrap">
@@ -83,105 +104,134 @@
           </div>
         </section>
 
-        <section class="content-panel table-section">
-          <div class="table-title">설비 현황 목록</div>
+        <section v-else class="content-panel table-section">
+          <div class="table-header">
+            <div class="table-title">설비 목록</div>
+            <label class="table-search">
+              <span>⌕</span>
+              <input v-model="equipmentSearch" type="search" placeholder="설비명, 위치, 유형, 상태 검색" />
+            </label>
+          </div>
 
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>설비명</th>
-                  <th>라인</th>
+                  <th>위치</th>
                   <th>설비 유형</th>
                   <th>상태</th>
                   <th>알람 상태</th>
                   <th>가동 시간</th>
-                  <th>마지막 업데이트</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in equipmentRows" :key="row.id" @click="selectEquipmentRow(row)">
+                <tr v-for="row in paginatedEquipmentRows" :key="row.id" @click="selectEquipmentRow(row)">
                   <td>{{ row.name }}</td>
                   <td>{{ row.line }}</td>
                   <td>{{ row.typeName }}</td>
                   <td><span class="status-pill" :class="row.status">{{ statusText[row.status] }}</span></td>
                   <td><span class="alarm-pill" :class="row.alarm">{{ alarmText[row.alarm] }}</span></td>
                   <td>{{ row.runningTime ?? '-' }}</td>
-                  <td>{{ row.updatedAt }}</td>
+                </tr>
+                <tr v-if="paginatedEquipmentRows.length === 0">
+                  <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div class="pagination">
-            <span>전체 {{ equipmentRows.length }}건</span>
+            <span>전체 {{ filteredEquipmentRows.length }}건</span>
             <div class="page-buttons">
-              <button type="button">‹</button>
-              <button class="current">1</button>
-              <button>2</button>
-              <button>3</button>
-              <button>4</button>
-              <button>5</button>
-              <button>...</button>
-              <button type="button">›</button>
+              <button type="button" :disabled="currentPage === 1" @click="currentPage -= 1">‹</button>
+              <button
+                v-for="page in totalPages"
+                :key="page"
+                type="button"
+                :class="{ current: currentPage === page }"
+                @click="currentPage = page"
+              >
+                {{ page }}
+              </button>
+              <button type="button" :disabled="currentPage === totalPages" @click="currentPage += 1">›</button>
             </div>
           </div>
         </section>
       </section>
 
       <aside class="side-panel">
-        <section class="info-card detail-card">
-          <div class="side-header">
-            <h3>설비 상세 정보</h3>
-            <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
-          </div>
+        <template v-if="selectedEquipment">
+          <section class="info-card detail-card">
+            <div class="side-header">
+              <h3>설비 상세 정보</h3>
+              <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
+            </div>
 
-          <div class="equipment-summary">
-            <div class="summary-icon">{{ (selectedEquipment?.layoutType ?? selectedEquipment?.type ?? 'EQ').toUpperCase() }}</div>
-            <div>
-              <h4>{{ selectedEquipment?.name ?? '-' }}</h4>
-              <span class="side-status" :class="selectedEquipment?.status">
-                {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
-              </span>
+            <div class="detail-header">
+              <span class="detail-icon">{{ selectedEquipmentIcon }}</span>
+              <div>
+                <strong>{{ selectedEquipment?.name ?? '-' }}</strong>
+                <span class="status-badge" :class="selectedEquipment?.status">
+                  {{ statusText[selectedEquipment?.status] ?? '알 수 없음' }}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <dl class="detail-list">
-            <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
-            <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
-            <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
-            <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
-            <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
-          </dl>
+            <dl class="info-list">
+              <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
+              <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
+              <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
+              <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
+              <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
+            </dl>
 
-          <h4 class="sub-title">주요 데이터</h4>
-          <div class="metric-grid">
-            <div class="metric-box">
-              <span>가동 상태</span>
-              <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
+            <h4 class="sub-title">주요 데이터</h4>
+            <div class="metrics-grid">
+              <div class="metric-box">
+                <span>가동 상태</span>
+                <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
+              </div>
+              <div class="metric-box">
+                <span>가동 시간</span>
+                <strong>{{ runningTime }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor1" class="metric-box">
+                <span>{{ currentSensorData.sensor1.label }}</span>
+                <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor2" class="metric-box">
+                <span>{{ currentSensorData.sensor2.label }}</span>
+                <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor3" class="metric-box">
+                <span>{{ currentSensorData.sensor3.label }}</span>
+                <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
+              </div>
+              <div v-if="currentSensorData.sensor4" class="metric-box">
+                <span>{{ currentSensorData.sensor4.label }}</span>
+                <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
+              </div>
             </div>
-            <div class="metric-box">
-              <span>가동 시간</span>
-              <strong>{{ runningTime }}</strong>
+          </section>
+
+          <section class="info-card alarm-card">
+            <div class="side-header">
+              <h3>최근 알람</h3>
+              <button type="button" @click="goToAlarmPage">더보기 ›</button>
             </div>
-            <div v-if="currentSensorData.sensor1" class="metric-box">
-              <span>{{ currentSensorData.sensor1.label }}</span>
-              <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor2" class="metric-box">
-              <span>{{ currentSensorData.sensor2.label }}</span>
-              <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor3" class="metric-box">
-              <span>{{ currentSensorData.sensor3.label }}</span>
-              <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
-            </div>
-            <div v-if="currentSensorData.sensor4" class="metric-box">
-              <span>{{ currentSensorData.sensor4.label }}</span>
-              <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
-            </div>
-          </div>
-        </section>
+            <ul class="recent-alarm-list">
+              <li v-for="alarm in recentAlarms" :key="alarm.id">
+                <span class="alarm-mark" :class="alarm.level">!</span>
+                <div>
+                  <strong>{{ alarm.title }}</strong>
+                  <small>{{ alarm.time }}</small>
+                </div>
+                <em :class="alarm.level">{{ alarm.label }}</em>
+              </li>
+            </ul>
+          </section>
+        </template>
       </aside>
     </main>
   </div>
@@ -194,6 +244,10 @@ import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../.
 import AppTopbar from '@/components/AppTopbar.vue'
 
 const router = useRouter()
+const activeView = ref('layout')
+const equipmentSearch = ref('')
+const currentPage = ref(1)
+const rowsPerPage = 10
 
 const statusText = {
   running: '가동',
@@ -207,6 +261,12 @@ const alarmText = {
   warning: '경고',
   danger: '위험',
 }
+
+const recentAlarms = [
+  { id: 'alarm-1', title: '토크 이상 감지', time: '2024-05-24 10:15:32', level: 'warning', label: '경고' },
+  { id: 'alarm-2', title: '오버 과열', time: '2024-05-24 09:28:16', level: 'danger', label: '위험' },
+  { id: 'alarm-3', title: '통신 지연', time: '2024-05-24 09:13:07', level: 'warning', label: '경고' },
+]
 
 const layoutStatusText = {
   running: '가동',
@@ -231,9 +291,50 @@ const equipmentTypeLabels = {
   wld: '점용접기',
   slr: '실러도포장비',
   vsi: '비전검사기',
+  cnv: '컨베이어',
   robot: '산업용로봇',
   nutrunner: '너트러너',
 }
+
+const equipmentTypeIcons = {
+  plf: '🏗️',
+  jig: '📐',
+  rob: '🤖',
+  wld: '🔥',
+  slr: '🖌️',
+  vsi: '👁️',
+  cnv: '↔️',
+  robot: '🤖',
+  nutrunner: '📐',
+}
+
+const monitoringEquipmentTypes = [
+  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'Daifuku' },
+  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'Hyundai Wia' },
+  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'ABB' },
+  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'Nachi' },
+  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Nordson' },
+  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'Keyence' },
+  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'BS-SCADA' },
+]
+
+const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeIndex) =>
+  [1, 2, 3].map((sequence, sequenceIndex) => ({
+    id: `${item.code}-${String(sequence).padStart(3, '0')}`,
+    name: `${item.code}-${String(sequence).padStart(3, '0')}`,
+    line: `${item.zone} - Line ${sequence}`,
+    lineNo: `Line ${sequence}`,
+    zone: item.zone,
+    rawType: item.type,
+    typeName: item.label,
+    manufacturer: item.manufacturer,
+    status: ['running', 'running', 'idle', 'running', 'stop', 'running', 'running'][(typeIndex + sequenceIndex) % 7],
+    runningTime:
+      (typeIndex + sequenceIndex) % 5 === 4
+        ? '00:00:00'
+        : `02:${String(10 + typeIndex * 3 + sequenceIndex).padStart(2, '0')}:${String(12 + typeIndex + sequenceIndex * 4).padStart(2, '0')}`,
+  })),
+)
 
 const createStation = (lineNo, type, zone, status) => ({
   id: `${type}-${lineNo}`,
@@ -263,27 +364,27 @@ const productionLines = [
   { key: 'line-3', no: 3, label: 'Line 3', stations: createLineStations(3, { rob: 'stop' }) },
 ]
 
-// ?ㅻ퉬蹂??쇱꽌 ?곗씠?????(濡쒕큸 vs ?덊듃?щ꼫)
+// 설비 유형별 센서 데이터 라벨
 const getSensorDisplayLabels = (type) => {
   if (type === 'robot') {
     return {
-      sensor1: { label: '?⑹젒?꾩븬(DC)', key: 'weld_voltage_dc', unit: 'V' },
-      sensor2: { label: '?⑹젒?꾨쪟(DC)', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '?⑹젒?띾룄', key: 'weld_speed', unit: 'm/s' },
-      sensor4: { label: '?앹궛 ?섎웾', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
+      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
+      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
+      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
     }
   } else if (type === 'nutrunner') {
     return {
-      sensor1: { label: '?꾩븬(AC)', key: 'weld_voltage_ac', unit: 'V' },
-      sensor2: { label: '?꾨쪟(AC)', key: 'weld_current_ac', unit: 'A' },
-      sensor3: { label: '?좏겕', key: 'cycle_time', unit: 'Nm' },
-      sensor4: { label: '?앹궛 ?섎웾', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '현재 온도', key: 'weld_voltage_ac', unit: '℃' },
+      sensor2: { label: '전류', key: 'weld_current_ac', unit: 'A' },
+      sensor3: { label: '사이클 타임', key: 'cycle_time', unit: 's' },
+      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
     }
   }
   return {}
 }
 
-// ?곹깭 ?곗씠??
+// 상태 데이터
 const equipment = reactive({
   list: [],
   loading: false,
@@ -291,12 +392,22 @@ const equipment = reactive({
 })
 
 const layoutItems = ref([])
-const selectedEquipment = ref({ id: null, name: '설비 선택 대기', status: 'unknown', type: 'robot', zone: '', line: '' })
+const selectedEquipment = ref(null)
 const latestLog = reactive({
   data: null,
   loading: false,
 })
 const runningTime = ref('00:00:00')
+
+const setActiveView = (view) => {
+  if (activeView.value === view) return
+
+  activeView.value = view
+  selectedEquipment.value = null
+  latestLog.data = null
+  latestLog.loading = false
+  runningTime.value = '00:00:00'
+}
 
 const selectLayoutStation = (station) => {
   selectedEquipment.value = {
@@ -322,60 +433,88 @@ const selectEquipmentRow = (row) => {
     type: row.rawType,
     zone: row.zone,
     line: row.lineNo,
-    layoutType: row.rawType === 'robot' ? 'rob' : 'jig',
+    layoutType: row.rawType,
+    manufacturer: row.manufacturer,
+    equipment_id: row.id,
+    equipment_name: row.name,
+    line_no: row.lineNo,
   }
 }
 
 const goToEquipmentDetail = () => {
-  if (!selectedEquipment.value?.id) return
-
-  router.push({
-    path: '/equipment-detail',
-    query: {
-      equipmentId: selectedEquipment.value.id,
-      equipmentName: selectedEquipment.value.name,
-    },
-  })
+  router.push('/equipment-detail')
 }
 
-// 媛??ㅻ퉬蹂?濡쒓렇 ?곗씠??罹먯떆
+const goToAlarmPage = () => {
+  router.push('/equipment-alarm')
+}
+
+// 설비별 최신 로그 데이터 캐시
 const equipmentLogCache = reactive({})
 
-// ?뚯씠釉??곗씠??(?좏깮???ㅻ퉬媛 蹂寃쎈맆 ???낅뜲?댄듃??
+// 테이블 데이터
 const equipmentRows = computed(() => {
-  if (!equipment.list.length) return []
-  
-  return equipment.list.map((eq) => {
-    const cachedLog = equipmentLogCache[eq.equipment_id] || latestLog.data
-    const status = cachedLog?.status || 'unknown'
-    
+  return monitoringEquipmentCatalog.map((eq) => {
+    const cachedLog = equipmentLogCache[eq.id]
+    const status = cachedLog?.status || eq.status
+
     return {
-      id: eq.equipment_id,
-      name: eq.equipment_name,
-      line: `${eq.zone} - ${eq.line_no}`,
-      lineNo: eq.line_no,
+      id: eq.id,
+      name: eq.name,
+      line: eq.line,
+      lineNo: eq.lineNo,
       zone: eq.zone,
-      rawType: eq.type,
-      typeName: eq.type === 'robot' ? '?⑹젒 濡쒕큸' : '?덊듃?щ꼫',
+      rawType: eq.rawType,
+      typeName: eq.typeName,
+      manufacturer: eq.manufacturer,
       status: status,
       alarm: status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
-      runningTime: runningTime.value,
+      runningTime: eq.runningTime,
       updatedAt: cachedLog?.timestamp || '2024-05-24 10:30:45'
     }
   })
 })
 
-// 珥덇린 ?곗씠??濡쒕뱶
+const filteredEquipmentRows = computed(() => {
+  const query = equipmentSearch.value.trim().toLowerCase()
+  if (!query) return equipmentRows.value
+
+  return equipmentRows.value.filter((row) =>
+    [row.name, row.line, row.typeName, statusText[row.status], alarmText[row.alarm]]
+      .join(' ')
+      .toLowerCase()
+      .includes(query),
+  )
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredEquipmentRows.value.length / rowsPerPage)))
+
+const paginatedEquipmentRows = computed(() => {
+  const start = (currentPage.value - 1) * rowsPerPage
+  return filteredEquipmentRows.value.slice(start, start + rowsPerPage)
+})
+
+watch(equipmentSearch, () => {
+  currentPage.value = 1
+})
+
+watch(totalPages, (nextTotalPages) => {
+  if (currentPage.value > nextTotalPages) {
+    currentPage.value = nextTotalPages
+  }
+})
+
+// 초기 데이터 로드
 onMounted(async () => {
   try {
     equipment.loading = true
     const equipmentsData = await fetchEquipments()
     equipment.list = equipmentsData
     
-    // ?덉씠?꾩썐 ?꾩씠??援ъ꽦 諛?媛??ㅻ퉬??濡쒓렇 ?곗씠??濡쒕뱶
+    // 레이아웃 아이템 구성 및 설비별 로그 데이터 로드
     layoutItems.value = await Promise.all(
       equipmentsData.map(async (eq) => {
-        // 媛??ㅻ퉬??濡쒓렇 ?곗씠??濡쒕뱶 諛?罹먯떆
+        // 설비 로그 데이터 로드 및 캐시
         try {
           const logData = await fetchLatestLog(eq.equipment_id)
           equipmentLogCache[eq.equipment_id] = logData
@@ -393,11 +532,6 @@ onMounted(async () => {
         }
       })
     )
-    
-    // 泥?踰덉㎏ ?ㅻ퉬 ?좏깮
-    if (layoutItems.value.length > 0) {
-      selectedEquipment.value = layoutItems.value[0]
-    }
   } catch (err) {
     equipment.error = err.message
     console.error('Failed to fetch equipment list:', err)
@@ -406,23 +540,23 @@ onMounted(async () => {
   }
 })
 
-// ?좏깮???ㅻ퉬媛 蹂寃쎈맆 ??濡쒓렇 ?곗씠??濡쒕뱶
+// 선택 설비가 바뀌면 로그 데이터 로드
 watch(selectedEquipment, async (newEquipment) => {
   if (!newEquipment || !newEquipment.id) return
   
   try {
     latestLog.loading = true
     
-    // 理쒖떊 濡쒓렇 ?곗씠??濡쒕뱶
+    // 최신 로그 데이터 로드
     const logData = await fetchLatestLog(newEquipment.id)
     latestLog.data = logData
     equipmentLogCache[newEquipment.id] = logData
     
-    // 媛???쒓컙 濡쒕뱶
+    // 가동 시간 로드
     const timeData = await fetchEquipmentRunningTime(newEquipment.id)
     runningTime.value = timeData.running_time || '00:00:00'
     
-    // ?덉씠?꾩썐 ?곹깭 ?낅뜲?댄듃
+    // 레이아웃 상태 업데이트
     const layoutItem = layoutItems.value.find(item => item.id === newEquipment.id)
     if (layoutItem) {
       layoutItem.status = logData.status
@@ -434,7 +568,7 @@ watch(selectedEquipment, async (newEquipment) => {
   }
 }, { immediate: true })
 
-// ?꾩옱 ?ㅻ퉬???곸꽭 ?뺣낫
+// 현재 설비의 상세 정보
 const currentEquipmentDetail = computed(() => {
   if (!selectedEquipment.value) return {}
   
@@ -454,12 +588,17 @@ const selectedEquipmentTypeLabel = computed(() => {
   return equipmentTypeLabels[type] ?? equipmentTypeLabels[selectedEquipment.value?.type] ?? '-'
 })
 
-// ?꾩옱 ?ㅻ퉬???쇱꽌 ?곗씠???덉씠釉?
+const selectedEquipmentIcon = computed(() => {
+  const type = currentEquipmentDetail.value.type ?? selectedEquipment.value?.layoutType ?? selectedEquipment.value?.type
+  return equipmentTypeIcons[type] ?? equipmentTypeIcons[selectedEquipment.value?.type] ?? '🏗️'
+})
+
+// 현재 설비의 센서 데이터 라벨
 const currentSensorLabels = computed(() => {
   return getSensorDisplayLabels(selectedEquipment.value?.type)
 })
 
-// ?꾩옱 ?ㅻ퉬???뱀젙 ?쇱꽌 ?곗씠??
+// 현재 설비의 측정 센서 데이터
 const currentSensorData = computed(() => {
   if (!latestLog.data) return {}
   
@@ -495,19 +634,50 @@ const currentSensorData = computed(() => {
 .page-body {
   height: calc(100vh - 70px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr) 442px;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   padding: 10px 12px 12px;
   overflow: hidden;
+}
+
+.view-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid #dfe8f4;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(35, 63, 104, 0.05);
+}
+
+.view-tabs button {
+  height: 34px;
+  min-width: 132px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #51627a;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.view-tabs button.active {
+  color: #fff;
+  background: #073c7b;
+  box-shadow: 0 8px 18px rgba(7, 60, 123, 0.18);
 }
 
 .left-column {
   min-width: 0;
   min-height: 0;
   height: 100%;
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 12px;
+  display: flex;
   overflow: hidden;
 }
 
@@ -520,6 +690,7 @@ const currentSensorData = computed(() => {
 }
 
 .line-layout-section {
+  width: 100%;
   min-height: 0;
   padding: 12px;
   display: grid;
@@ -546,6 +717,7 @@ const currentSensorData = computed(() => {
   gap: 8px;
   min-width: 0;
   flex: 0 0 auto;
+  justify-content: flex-start;
 }
 
 .section-icon {
@@ -563,11 +735,51 @@ h2 {
   font-size: 20px;
   font-weight: 950;
   white-space: nowrap;
+  text-align: left;
 }
 
 h2 span {
   color: #52647a;
   font-weight: 700;
+}
+
+.title-tooltip {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 20px;
+  border: 1px solid #b9c6d8;
+  border-radius: 50%;
+  color: #48617f;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: help;
+}
+
+.title-tooltip em {
+  position: absolute;
+  left: 0;
+  top: 28px;
+  z-index: 20;
+  width: 300px;
+  display: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #fff;
+  background: #08234d;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1.45;
+  font-weight: 750;
+}
+
+.title-tooltip:hover em,
+.title-tooltip:focus em {
+  display: block;
 }
 
 .legend-wrap {
@@ -868,6 +1080,7 @@ h2 span {
 }
 
 .table-section {
+  width: 100%;
   min-height: 0;
   padding: 12px;
   display: grid;
@@ -882,6 +1095,47 @@ h2 span {
   color: #0d386f;
 }
 
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.table-search {
+  width: min(420px, 42%);
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid #d5e0ee;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.table-search span {
+  color: #718096;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.table-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  color: #0f2748;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.table-search input::placeholder {
+  color: #98a6ba;
+}
+
 .table-wrap {
   min-height: 0;
   overflow: auto;
@@ -893,26 +1147,27 @@ table {
   width: 100%;
   min-width: 760px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 th {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px;
+  padding: 11px 10px;
   background: #f3f7fc;
   color: #38536f;
-  font-weight: 800;
+  font-weight: 900;
   text-align: center;
   border-bottom: 1px solid #e2eaf5;
 }
 
 td {
-  padding: 7px 8px;
+  padding: 12px 10px;
   text-align: center;
   color: #24405f;
   border-bottom: 1px solid #edf2f8;
+  font-weight: 800;
 }
 
 tbody tr:hover {
@@ -921,6 +1176,12 @@ tbody tr:hover {
 
 tbody tr {
   cursor: pointer;
+}
+
+.empty-row {
+  height: 72px;
+  color: #6d7b8f;
+  font-weight: 850;
 }
 
 .status-pill,
@@ -932,8 +1193,8 @@ tbody tr {
   height: 22px;
   padding: 0 9px;
   border-radius: 7px;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .status-pill.running,
@@ -983,6 +1244,11 @@ tbody tr {
   font-weight: 700;
 }
 
+.page-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .page-buttons .current {
   background: #073c7b;
   color: #fff;
@@ -993,6 +1259,8 @@ tbody tr {
   min-height: 0;
   height: 100%;
   display: flex;
+  flex-direction: column;
+  gap: 12px;
   overflow: hidden;
 }
 
@@ -1003,15 +1271,19 @@ tbody tr {
 
 .detail-card {
   width: 100%;
-  height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
+}
+
+.alarm-card {
+  flex: 0 0 auto;
 }
 
 .side-header h3 {
-  font-size: 16px;
-  font-weight: 900;
+  font-size: 20px;
+  font-weight: 950;
 }
 
 .side-header button {
@@ -1023,24 +1295,96 @@ tbody tr {
   cursor: pointer;
 }
 
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.detail-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.detail-header strong {
+  display: block;
+  font-size: 18px;
+  font-weight: 950;
+  color: #0d2448;
+  margin-bottom: 6px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.status-badge.running {
+  background: #e1f6ef;
+  color: #12a985;
+}
+
+.status-badge.idle {
+  background: #fff0df;
+  color: #df7922;
+}
+
+.status-badge.stop {
+  background: #ffe7eb;
+  color: #fa2c45;
+}
+
+.status-badge.unknown {
+  background: #f0f3f7;
+  color: #7d8797;
+}
+
+.info-list {
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.info-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 13px;
+  border-bottom: 1px solid #f3f6fa;
+}
+
+.info-list dt {
+  margin: 0;
+  font-weight: 800;
+  color: #6b7c94;
+  white-space: nowrap;
+}
+
+.info-list dd {
+  margin: 0;
+  font-weight: 900;
+  color: #0d2448;
+  text-align: right;
+  word-break: keep-all;
+}
+
 .equipment-summary {
   display: flex;
   align-items: center;
-  gap: 14px;
   margin-top: 18px;
   padding-bottom: 16px;
   border-bottom: 1px solid #edf2f8;
-}
-
-.summary-icon {
-  width: 46px;
-  height: 46px;
-  flex: 0 0 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: #f1f6fc;
-  font-size: 24px;
 }
 
 .equipment-summary h4 {
@@ -1080,43 +1424,110 @@ tbody tr {
 }
 
 .sub-title {
-  margin: 18px 0 12px;
-  font-size: 14px;
-  font-weight: 900;
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 950;
+  color: #0d2448;
 }
 
-.metric-grid {
+.metrics-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
 }
 
 .metric-box {
   min-width: 0;
-  padding: 12px;
-  border: 1px solid #e3eaf4;
-  border-radius: 9px;
-  background: #fff;
-  box-shadow: 0 3px 10px rgba(32, 57, 92, 0.04);
+  padding: 12px 14px;
+  border: 1px solid #e8edf4;
+  border-radius: 10px;
+  background: #f7f9fc;
 }
 
 .metric-box span {
   display: block;
-  margin-bottom: 5px;
-  color: #7d8898;
-  font-size: 11px;
+  margin-bottom: 6px;
+  color: #6b7c94;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .metric-box strong {
-  color: #243a58;
+  color: #0d2448;
   font-size: 15px;
+  font-weight: 950;
+}
+
+.recent-alarm-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-alarm-list li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.alarm-mark {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.alarm-mark.warning {
+  background: #ffb435;
+}
+
+.alarm-mark.danger {
+  background: #ff4f63;
+}
+
+.recent-alarm-list strong {
+  display: block;
+  color: #243a58;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.recent-alarm-list small {
+  color: #7d8898;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.recent-alarm-list em {
+  min-width: 42px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-style: normal;
+  text-align: center;
+  font-size: 11px;
   font-weight: 900;
+}
+
+.recent-alarm-list em.warning {
+  color: #d48600;
+  background: #fff5e2;
+}
+
+.recent-alarm-list em.danger {
+  color: #e13245;
+  background: #ffecef;
 }
 
 @media (max-width: 1200px) {
   .page-body {
-    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-columns: minmax(0, 1fr) 340px;
   }
 
   .layout-matrix {
