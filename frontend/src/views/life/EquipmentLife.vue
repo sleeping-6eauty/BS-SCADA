@@ -7,18 +7,19 @@ const router = useRouter()
 const searchQuery = ref('')
 const selectedLine = ref('전체 라인')
 const sortOrder = ref('잔존 수명 낮은 순')
+const viewMode = ref('card')
 const rowsPerPage = ref(10)
 const currentPage = ref(1)
-const selectedId = ref('robot-1')
+const selectedId = ref('PLF-001')
 
-const typeDefs = [
-  { type: '용접 로봇', prefix: 'Robot', icon: '🤖', code: 'RB' },
-  { type: '컨베이어', prefix: 'Conveyor', icon: '➡', code: 'CV' },
-  { type: '너트러너', prefix: 'Nutrunner', icon: '🔩', code: 'NT' },
-  { type: '비전 검사기', prefix: 'Vision', icon: '👁', code: 'VS' },
-  { type: '차체 지그', prefix: 'Body Jig', icon: '🔧', code: 'BJ' },
-  { type: 'AGV', prefix: 'AGV', icon: '🚗', code: 'AGV' },
-  { type: '프레스', prefix: 'Press', icon: '🔨', code: 'PR' },
+const equipmentDefs = [
+  { code: 'PLF', type: '패널 투입 장치', icon: '🏗️', manufacturer: '현대자동화' },
+  { code: 'JIG', type: '차체 지그', icon: '📐', manufacturer: 'Daewon Precision' },
+  { code: 'ROB', type: '산업용 로봇', icon: '🤖', manufacturer: 'ABB' },
+  { code: 'WLD', type: '점 용접기', icon: '🔥', manufacturer: 'KUKA' },
+  { code: 'SLR', type: '실러 도포 장비', icon: '🖌️', manufacturer: 'Nordson' },
+  { code: 'VSI', type: '비전 검사기', icon: '👁️', manufacturer: 'Cognex' },
+  { code: 'CNV', type: '컨베이어', icon: '→', manufacturer: 'Siemens' },
 ]
 
 const zones = ['Zone A', 'Zone B', 'Zone C']
@@ -27,13 +28,12 @@ const statusPool = [
   { status: 'idle', statusLabel: '대기' },
   { status: 'stop', statusLabel: '정지' },
 ]
-const manufacturers = ['ABB', 'Fanuc', 'KUKA', 'Siemens', 'Hyundai', 'Cognex', 'Atlas Copco']
 
 const buildEquipmentList = () => {
   const list = []
   let lifeSeed = 82
 
-  typeDefs.forEach((def, typeIdx) => {
+  equipmentDefs.forEach((def, typeIdx) => {
     for (let unit = 1; unit <= 3; unit += 1) {
       const zone = zones[typeIdx % zones.length]
       const lineNo = ((typeIdx + unit) % 3) + 1
@@ -42,11 +42,11 @@ const buildEquipmentList = () => {
       lifeSeed -= 3
       const statusInfo = statusPool[(typeIdx + unit) % statusPool.length]
       const month = String(((typeIdx + unit) % 12) + 1).padStart(2, '0')
-      const id = `${def.prefix.toLowerCase().replace(/\s+/g, '-')}-${unit + typeIdx * 3}`
+      const id = `${def.code}-${String(unit).padStart(3, '0')}`
 
       list.push({
         id,
-        name: `${def.prefix} ${unit + typeIdx * 3}`,
+        name: id,
         type: def.type,
         status: statusInfo.status,
         statusLabel: statusInfo.statusLabel,
@@ -54,8 +54,8 @@ const buildEquipmentList = () => {
         replaceDate: life < 35 ? `2024-${month}-10` : `2025-${month}-18`,
         line,
         icon: def.icon,
-        manufacturer: manufacturers[typeIdx % manufacturers.length],
-        equipId: `${def.code}-${unit + typeIdx * 3}`.toUpperCase(),
+        manufacturer: def.manufacturer,
+        equipId: id,
         location: line,
         lastUpdate: '2024-05-24 10:30:45',
         runtime: statusInfo.status === 'stop' ? '00:00:00' : '02:45:12',
@@ -73,10 +73,10 @@ const buildEquipmentList = () => {
 const equipmentList = buildEquipmentList()
 
 const recentAlarms = [
-  { title: '토크 이상 감지', time: '2024-05-24 10:15', level: 'warning', label: '경고' },
-  { title: '과열 경보', time: '2024-05-24 09:32', level: 'warning', label: '경고' },
-  { title: '전류 스파이크', time: '2024-05-24 08:21', level: 'danger', label: '위험' },
-  { title: '통신 지연', time: '2024-05-24 07:58', level: 'warning', label: '경고' },
+  { title: 'PLF-001 투입 센서 이상', time: '2024-05-24 10:15', level: 'warning', label: '경고' },
+  { title: 'WLD-002 용접 전류 과다', time: '2024-05-24 09:32', level: 'warning', label: '경고' },
+  { title: 'ROB-003 축 구동 오류', time: '2024-05-24 08:21', level: 'danger', label: '위험' },
+  { title: 'VSI-001 비전 통신 지연', time: '2024-05-24 07:58', level: 'warning', label: '경고' },
 ]
 
 const matchesSearch = (item, query) => {
@@ -162,141 +162,156 @@ const isUrgentDate = (date) => date <= '2024-09-30'
     <main class="content">
       <div class="main-layout">
         <div class="left-column">
-          <div class="toolbar-row">
-            <label class="search-box">
-              <span class="search-icon">⌕</span>
-              <input
-                v-model="searchQuery"
-                type="search"
-                class="search-input"
-                placeholder="설비명, 유형, ID 검색 (예: robot)"
-              />
-            </label>
-            <select v-model="selectedLine" class="filter-select">
-              <option>전체 라인</option>
-              <option>Zone A</option>
-              <option>Zone B</option>
-              <option>Zone C</option>
-            </select>
-            <select v-model="sortOrder" class="filter-select">
-              <option>잔존 수명 낮은 순</option>
-              <option>잔존 수명 높은 순</option>
-              <option>예상 교체 시기순</option>
-            </select>
-          </div>
-
-          <section class="panel status-panel">
+          <section class="panel life-overview-panel">
             <div class="panel-header">
               <h2>설비 잔존 수명 현황</h2>
+            </div>
+
+            <div class="toolbar-row">
+              <div class="view-toggle" aria-label="보기 방식 선택">
+                <button
+                  type="button"
+                  :class="{ active: viewMode === 'card' }"
+                  @click="viewMode = 'card'"
+                >
+                  카드형
+                </button>
+                <button
+                  type="button"
+                  :class="{ active: viewMode === 'list' }"
+                  @click="viewMode = 'list'"
+                >
+                  목록형
+                </button>
+              </div>
+              <select v-model="selectedLine" class="filter-select">
+                <option>전체 라인</option>
+                <option>Zone A</option>
+                <option>Zone B</option>
+                <option>Zone C</option>
+              </select>
+              <select v-model="sortOrder" class="filter-select">
+                <option>잔존 수명 낮은 순</option>
+                <option>잔존 수명 높은 순</option>
+                <option>예상 교체 시기순</option>
+              </select>
+              <label class="search-box">
+                <span class="search-icon">⌕</span>
+                <input
+                  v-model="searchQuery"
+                  type="search"
+                  class="search-input"
+                  placeholder="설비명, 유형, ID 검색 (예: PLF-001)"
+                />
+              </label>
+            </div>
+
+            <div class="result-row">
               <span class="result-count">{{ filteredEquipment.length }}대</span>
             </div>
 
-            <div class="equipment-scroll">
+            <div v-if="viewMode === 'card'" class="equipment-scroll">
               <div v-if="filteredEquipment.length === 0" class="empty-state">
                 검색 결과가 없습니다.
               </div>
               <div v-else class="equipment-grid">
-              <article
-                v-for="item in filteredEquipment"
-                :key="item.id"
-                class="equip-card"
-                :class="{ selected: selectedId === item.id }"
-                @click="selectEquipment(item.id)"
-              >
-                <div class="card-top">
-                  <span class="card-icon">{{ item.icon }}</span>
-                  <div class="card-title">
-                    <strong>{{ item.name }}</strong>
-                    <span>{{ item.type }}</span>
-                  </div>
-                  <span class="status-badge" :class="item.status">{{ item.statusLabel }}</span>
-                </div>
-                <div class="card-life">
-                  <span class="life-label">잔존 수명</span>
-                  <strong class="life-value" :class="lifeColor(item.life)">{{ item.life }}%</strong>
-                  <div class="battery-bar">
-                    <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
-                  </div>
-                </div>
-                <div class="card-footer">
-                  <span>예상 교체 시기</span>
-                  <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
-                </div>
-              </article>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel list-panel">
-            <div class="panel-header">
-              <h2>설비 잔존 수명 목록</h2>
-              <span class="result-count">{{ filteredEquipment.length }}대</span>
-            </div>
-            <div class="table-wrap">
-              <table class="data-table life-list-table">
-                <thead>
-                  <tr>
-                    <th>설비명</th>
-                    <th>라인</th>
-                    <th>설비 유형</th>
-                    <th>상태</th>
-                    <th>잔존 수명</th>
-                    <th>예상 교체 시기</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="filteredEquipment.length === 0">
-                    <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
-                  </tr>
-                  <tr
-                    v-for="row in pagedTableRows"
-                    :key="row.id"
-                    :class="{ selected: selectedId === row.id }"
-                    @click="selectEquipment(row.id)"
-                  >
-                    <td class="name-cell">{{ row.name }}</td>
-                    <td>{{ row.line }}</td>
-                    <td>{{ row.type }}</td>
-                    <td>
-                      <i class="status-dot" :class="row.status"></i>
-                      {{ row.statusLabel }}
-                    </td>
-                    <td class="life-cell">
-                      <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
-                      <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
-                    </td>
-                    <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="table-footer">
-              <div class="rows-control">
-                <span>행 표시</span>
-                <select v-model.number="rowsPerPage" class="filter-select small">
-                  <option :value="7">7</option>
-                  <option :value="10">10</option>
-                  <option :value="15">15</option>
-                </select>
-              </div>
-              <div class="pagination">
-                <button type="button" @click="setPage(currentPage - 1)">‹</button>
-                <button
-                  v-for="page in totalPages"
-                  :key="page"
-                  type="button"
-                  :class="{ active: page === currentPage }"
-                  @click="setPage(page)"
+                <article
+                  v-for="item in filteredEquipment"
+                  :key="item.id"
+                  class="equip-card"
+                  :class="{ selected: selectedId === item.id }"
+                  @click="selectEquipment(item.id)"
                 >
-                  {{ page }}
-                </button>
-                <button type="button" @click="setPage(currentPage + 1)">›</button>
+                  <div class="card-top">
+                    <span class="card-icon">{{ item.icon }}</span>
+                    <div class="card-title">
+                      <strong>{{ item.name }}</strong>
+                      <span>{{ item.type }}</span>
+                    </div>
+                    <span class="status-badge" :class="item.status">{{ item.statusLabel }}</span>
+                  </div>
+                  <div class="card-life">
+                    <span class="life-label">잔존 수명</span>
+                    <strong class="life-value" :class="lifeColor(item.life)">{{ item.life }}%</strong>
+                    <div class="battery-bar">
+                      <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
+                    </div>
+                  </div>
+                  <div class="card-footer">
+                    <span>예상 교체 시기</span>
+                    <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
+                  </div>
+                </article>
               </div>
-              <div class="page-size">
-                <select class="filter-select small">
-                  <option>10 / 페이지</option>
-                  <option>20 / 페이지</option>
-                </select>
+            </div>
+
+            <div v-else class="list-view">
+              <div class="table-wrap">
+                <table class="data-table life-list-table">
+                  <thead>
+                    <tr>
+                      <th>설비명</th>
+                      <th>라인</th>
+                      <th>설비 유형</th>
+                      <th>상태</th>
+                      <th>잔존 수명</th>
+                      <th>예상 교체 시기</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="filteredEquipment.length === 0">
+                      <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
+                    </tr>
+                    <tr
+                      v-for="row in pagedTableRows"
+                      :key="row.id"
+                      :class="{ selected: selectedId === row.id }"
+                      @click="selectEquipment(row.id)"
+                    >
+                      <td class="name-cell">{{ row.name }}</td>
+                      <td>{{ row.line }}</td>
+                      <td>{{ row.type }}</td>
+                      <td>
+                        <i class="status-dot" :class="row.status"></i>
+                        {{ row.statusLabel }}
+                      </td>
+                      <td class="life-cell">
+                        <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
+                        <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
+                      </td>
+                      <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="table-footer">
+                <div class="rows-control">
+                  <span>행 표시</span>
+                  <select v-model.number="rowsPerPage" class="filter-select small">
+                    <option :value="7">7</option>
+                    <option :value="10">10</option>
+                    <option :value="15">15</option>
+                  </select>
+                </div>
+                <div class="pagination">
+                  <button type="button" @click="setPage(currentPage - 1)">‹</button>
+                  <button
+                    v-for="page in totalPages"
+                    :key="page"
+                    type="button"
+                    :class="{ active: page === currentPage }"
+                    @click="setPage(page)"
+                  >
+                    {{ page }}
+                  </button>
+                  <button type="button" @click="setPage(currentPage + 1)">›</button>
+                </div>
+                <div class="page-size">
+                  <select class="filter-select small">
+                    <option>10 / 페이지</option>
+                    <option>20 / 페이지</option>
+                  </select>
+                </div>
               </div>
             </div>
           </section>
@@ -371,7 +386,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                 <em :class="alarm.level">{{ alarm.label }}</em>
               </li>
             </ul>
-            <button type="button" class="alarm-more" @click="goToAlarmPage">더보기 ›</button>
           </section>
         </aside>
       </div>
@@ -394,7 +408,7 @@ const isUrgentDate = (date) => date <= '2024-09-30'
   display: grid;
   grid-template-columns: 1fr 442px;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .left-column {
@@ -402,12 +416,20 @@ const isUrgentDate = (date) => date <= '2024-09-30'
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  min-height: 0;
 }
 
 .right-column {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.life-overview-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .panel {
@@ -432,6 +454,33 @@ h2 {
   color: #0d2448;
 }
 
+.view-toggle {
+  display: inline-flex;
+  flex: none;
+  padding: 3px;
+  border: 1px solid #d8e1ed;
+  border-radius: 6px;
+  background: #f7f9fc;
+}
+
+.view-toggle button {
+  min-width: 70px;
+  height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #4a5f7a;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.view-toggle button.active {
+  background: #fff;
+  color: #126de0;
+  box-shadow: 0 2px 8px rgba(13, 36, 72, 0.1);
+}
+
 .toolbar-row {
   display: flex;
   align-items: center;
@@ -440,7 +489,8 @@ h2 {
 }
 
 .search-box {
-  flex: 1;
+  flex: 1 1 280px;
+  min-width: 260px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -478,19 +528,26 @@ h2 {
   color: #6b7c94;
 }
 
-.status-panel .equipment-scroll {
-  max-height: 332px;
+.result-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.life-overview-panel .equipment-scroll {
+  flex: 1;
+  min-height: 332px;
   overflow-y: auto;
   padding-right: 4px;
   scrollbar-width: thin;
   scrollbar-color: #c5d0e0 transparent;
 }
 
-.status-panel .equipment-scroll::-webkit-scrollbar {
+.life-overview-panel .equipment-scroll::-webkit-scrollbar {
   width: 6px;
 }
 
-.status-panel .equipment-scroll::-webkit-scrollbar-thumb {
+.life-overview-panel .equipment-scroll::-webkit-scrollbar-thumb {
   background: #c5d0e0;
   border-radius: 99px;
 }
@@ -508,6 +565,7 @@ h2 {
 }
 
 .filter-select {
+  flex: 0 0 156px;
   height: 36px;
   border: 1px solid #d8e1ed;
   border-radius: 6px;
@@ -519,8 +577,16 @@ h2 {
 }
 
 .filter-select.small {
+  flex: 0 0 auto;
   height: 32px;
   font-size: 12px;
+}
+
+.list-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .equipment-grid {
@@ -984,17 +1050,6 @@ h2 {
 .alarm-list em.danger {
   background: #fff1f0;
   color: #cf1322;
-}
-
-.alarm-more {
-  margin-top: 12px;
-  align-self: center;
-  border: 0;
-  background: transparent;
-  color: #0d2448;
-  font-weight: 950;
-  font-size: 13px;
-  cursor: pointer;
 }
 
 .green { color: #12b58f; }
