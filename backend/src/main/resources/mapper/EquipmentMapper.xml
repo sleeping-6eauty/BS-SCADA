@@ -17,15 +17,15 @@
     </resultMap>
 
     <select id="findAll" resultMap="equipmentResultMap">
-        SELECT equipment_id, equipment_name, line_no, zone, manufacturer, cycle_time, health_score, remaining_life,
-               replacement_date, expected_lifetime_hours, accumulated_run_hours
+        SELECT equipment_id, equipment_name, line_no, zone, manufacturer, cycle_time, health_score,
+               remaining_life, replacement_date, expected_lifetime_hours, accumulated_run_hours
         FROM equipment
         ORDER BY equipment_id
     </select>
 
     <select id="findByEquipmentCode" resultMap="equipmentResultMap" parameterType="string">
-        SELECT equipment_id, equipment_name, line_no, zone, manufacturer, cycle_time, health_score, remaining_life,
-               replacement_date, expected_lifetime_hours, accumulated_run_hours
+        SELECT equipment_id, equipment_name, line_no, zone, manufacturer, cycle_time, health_score,
+               remaining_life, replacement_date, expected_lifetime_hours, accumulated_run_hours
         FROM equipment
         WHERE equipment_id = #{equipmentId}
     </select>
@@ -49,5 +49,14 @@
     <delete id="deleteById" parameterType="string">
         DELETE FROM equipment WHERE equipment_id = #{equipmentId}
     </delete>
+
+    <update id="updateMetrics">
+        UPDATE equipment
+        SET health_score = #{healthScore},
+            accumulated_run_hours = #{accumulatedRunHours},
+            remaining_life = #{remainingLife},
+            replacement_date = #{replacementDate}
+        WHERE equipment_id = #{equipmentId}
+    </update>
 
 </mapper>

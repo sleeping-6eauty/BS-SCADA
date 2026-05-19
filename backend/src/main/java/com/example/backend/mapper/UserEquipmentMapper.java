@@ -9,7 +9,18 @@ import com.example.backend.domain.Equipment;
 
 @Mapper
 public interface UserEquipmentMapper {
+
     List<Equipment> findEquipmentsByUserId(@Param("userId") Long userId);
-    int assignEquipmentToUser(@Param("userId") Long userId, @Param("equipmentId") String equipmentId);
-    int assignEquipmentsToUser(@Param("userId") Long userId, @Param("equipmentIds") List<String> equipmentIds);
+
+    int assignEquipmentToUser(
+            @Param("userId") Long userId,
+            @Param("equipmentId") String equipmentId
+    );
+
+    int assignEquipmentsToUser(
+            @Param("userId") Long userId,
+            @Param("equipmentIds") List<String> equipmentIds
+    );
+
+    int deleteByUserId(@Param("userId") Long userId);
 }
