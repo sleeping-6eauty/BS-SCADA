@@ -20,16 +20,25 @@
     <select id="findById" resultMap="userResultMap" parameterType="long">
         SELECT user_id, name, email, password_hash, role, status
         FROM users
-        WHERE user_id = #{id}
+        WHERE user_id = #{userId}
     </select>
 
     <select id="findAll" resultMap="userResultMap">
         SELECT user_id, name, email, password_hash, role, status
         FROM users
+        <where>
+            <if test="role != null and role != ''">
+                AND role = #{role}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
         ORDER BY user_id
     </select>
 
-    <insert id="insert" parameterType="com.example.backend.domain.User">
+    <insert id="insert" parameterType="com.example.backend.domain.User"
+            useGeneratedKeys="true" keyProperty="userId">
         INSERT INTO users (name, email, password_hash, role, status)
         VALUES (#{name}, #{email}, #{passwordHash}, #{role}, #{status})
     </insert>
@@ -41,7 +50,7 @@
     </update>
 
     <delete id="deleteById" parameterType="long">
-        DELETE FROM users WHERE user_id = #{id}
+        DELETE FROM users WHERE user_id = #{userId}
     </delete>
 
 </mapper>

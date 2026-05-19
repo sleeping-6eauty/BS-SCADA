@@ -10,9 +10,9 @@ import com.example.backend.domain.User;
 @Mapper
 public interface UserMapper {
     User findByEmail(@Param("email") String email);
-    User findById(@Param("id") Long id);
-    List<User> findAll();
+    User findById(@Param("userId") Long userId);
+    List<User> findAll(@Param("role") String role, @Param("status") String status);
     int insert(User user);
     int update(User user);
-    int deleteById(@Param("id") Long id);
+    int deleteById(@Param("userId") Long userId);
 }

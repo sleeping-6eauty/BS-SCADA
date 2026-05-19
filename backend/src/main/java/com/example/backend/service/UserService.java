@@ -17,6 +17,8 @@ import com.example.backend.mapper.EquipmentMapper;
 import com.example.backend.mapper.UserEquipmentMapper;
 import com.example.backend.mapper.UserMapper;
 
+import org.springframework.transaction.annotation.Transactional;
+
 @Service
 public class UserService {
 
@@ -104,14 +106,15 @@ public class UserService {
         return equipment;
     }
 
+    @Transactional
     public List<Equipment> assignEquipmentsToUser(Long userId, EquipmentAssignmentBatchRequest request) {
         User user = userMapper.findById(userId);
         if (user == null) {
             throw new IllegalArgumentException("User not found");
         }
 
-        if (request.getEquipmentIds() == null || request.getEquipmentIds().isEmpty()) {
-            throw new IllegalArgumentException("equipmentIds cannot be empty");
+        if (request.getEquipmentIds() == null) {
+            throw new IllegalArgumentException("equipmentIds cannot be null");
         }
 
         List<Equipment> equipments = request.getEquipmentIds().stream()
@@ -123,23 +126,17 @@ public class UserService {
                 })
                 .collect(Collectors.toList());
 
-        userEquipmentMapper.assignEquipmentsToUser(userId, request.getEquipmentIds());
+        userEquipmentMapper.deleteByUserId(userId);
+
+        if (!request.getEquipmentIds().isEmpty()) {
+            userEquipmentMapper.assignEquipmentsToUser(userId, request.getEquipmentIds());
+        }
+
         return equipments;
     }
 
-    public List<User> listUsers(String filterRole) {
-        List<User> users = userMapper.findAll();
-
-        if (filterRole == null || filterRole.isBlank()) {
-            return users;
-        }
-
-        return users.stream()
-                .filter(user ->
-                        user.getRole() != null
-                                && user.getRole().equalsIgnoreCase(filterRole)
-                )
-                .collect(Collectors.toList());
+    public List<User> listUsers(String role, String status) {
+        return userMapper.findAll(role, status);
     }
 
     public User updateUser(Long id, UpdateUserRequest request) {
@@ -174,7 +171,9 @@ public class UserService {
         return existing;
     }
 
+    @Transactional
     public void deleteUser(Long id) {
+        userEquipmentMapper.deleteByUserId(id);
         userMapper.deleteById(id);
     }
 }

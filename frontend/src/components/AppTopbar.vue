@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
 import logoImage from '@/assets/logo.png'
+import AlarmModal from '@/components/AlarmModal.vue'
 
 defineProps({
   activeMenu: {
@@ -38,13 +39,28 @@ const updateCurrentTime = () => {
   currentTime.value = formatDateTime(new Date())
 }
 
+const showAlarmModal = ref(false)
+const bellWrapRef = ref(null)
+
+const toggleAlarmModal = () => {
+  showAlarmModal.value = !showAlarmModal.value
+}
+
+const handleClickOutside = (e) => {
+  if (bellWrapRef.value && !bellWrapRef.value.contains(e.target)) {
+    showAlarmModal.value = false
+  }
+}
+
 onMounted(() => {
   updateCurrentTime()
   timerId = window.setInterval(updateCurrentTime, 1000)
+  document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   window.clearInterval(timerId)
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -73,7 +89,10 @@ onUnmounted(() => {
     <div class="top-actions">
       <div class="time">◷ {{ currentTime }}</div>
       <div class="admin">👤 관리자</div>
-      <button class="bell" type="button">🔔<span>2</span></button>
+      <div class="bell-wrap" ref="bellWrapRef">
+        <button class="bell" type="button" @click="toggleAlarmModal">🔔<span>2</span></button>
+        <AlarmModal v-if="showAlarmModal" class="alarm-modal-popup" />
+      </div>
     </div>
   </header>
 </template>
@@ -86,9 +105,11 @@ onUnmounted(() => {
 .gnb a { min-width: 118px; display: grid; place-items: center; font-size: 16px; font-weight: 800; color: rgba(255,255,255,.9); position: relative; white-space: nowrap; }
 .gnb a.active::after { content: ''; position: absolute; left: 18px; right: 18px; bottom: 0; height: 5px; background: #16c7d8; border-radius: 8px 8px 0 0; }
 .top-actions { flex-shrink: 0; margin-left: auto; height: 100%; display: flex; align-items: center; }
-.time, .admin, .bell { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; border-left: 1px solid rgba(255,255,255,.12); }
-.bell { position: relative; border: 0; color: #fff; background: transparent; font-size: 22px; cursor: pointer; }
+.time, .admin { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; border-left: 1px solid rgba(255,255,255,.12); }
+.bell-wrap { position: relative; height: 100%; display: flex; align-items: center; border-left: 1px solid rgba(255,255,255,.12); }
+.bell { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; position: relative; border: 0; color: #fff; background: transparent; font-size: 22px; cursor: pointer; }
 .bell span { position: absolute; top: 16px; right: 15px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #ff2d47; color: #fff; font-size: 12px; }
+.alarm-modal-popup { position: absolute; top: calc(100% + 8px); right: 0; z-index: 1000; }
 
 @media (max-width: 1280px) {
   .gnb a { min-width: 104px; font-size: 15px; }

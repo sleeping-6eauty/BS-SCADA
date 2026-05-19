@@ -6,6 +6,7 @@ import loginLeftLogo from '@/assets/login-left.png'
 import loginRightLogo from '@/assets/login-right.png'
 import hidePw from '@/assets/hide-pw.png'
 import showPw from '@/assets/show-pw.png'
+import emailIcon from '@/assets/email.png'
 import { signup } from '@/api/auth.js'
 
 const router = useRouter()
@@ -14,6 +15,7 @@ const router = useRouter()
 const loginBgSrc = loginBg
 const loginLeftLogoSrc = loginLeftLogo
 const loginRightLogoSrc = loginRightLogo
+const emailIconSrc = emailIcon
 
 // 폼 상태
 const name = ref('')
@@ -77,7 +79,7 @@ async function handleSignup() {
 
         <label class="field-label" for="email">이메일</label>
         <div class="input-wrap">
-          <span class="input-icon mail" aria-hidden="true"></span>
+          <img class="input-icon email-img" :src="emailIconSrc" alt="" aria-hidden="true" />
           <input id="email" type="email" v-model="email" placeholder="이메일을 입력하세요" autocomplete="email" />
         </div>
 

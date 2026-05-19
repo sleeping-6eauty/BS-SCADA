@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.backend.mapper.LogMapper">
+
+    <!-- ============================================================
+         Panel Feeder Log
+         ============================================================ -->
+    <select id="findPanelFeederLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id            AS logId,
+            equipment_id      AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            motor_current_a   AS motorCurrentA,
+            vacuum_pressure_kpa AS vacuumPressureKpa,
+            position_error_mm AS positionErrorMm
+        FROM panel_feeder_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Body Jig Log
+         ============================================================ -->
+    <select id="findBodyJigLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id                  AS logId,
+            equipment_id            AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            clamp_pressure_bar      AS clampPressureBar,
+            pneumatic_pressure_bar  AS pneumaticPressureBar,
+            clamp_position_mm       AS clampPositionMm
+        FROM body_jig_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Robot Log
+         NOTE: Uses robot_swivel, robot_horizontal, robot_vertical
+               (NOT robot_pos_x/y/z — those columns do not exist)
+         ============================================================ -->
+    <select id="findRobotLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id                  AS logId,
+            equipment_id            AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            robot_swivel            AS robotSwivel,
+            robot_horizontal        AS robotHorizontal,
+            robot_vertical          AS robotVertical,
+            tool_offset_error_mm    AS toolOffsetErrorMm,
+            axis_temp_max_c         AS axisTempMaxC
+        FROM robot_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Spot Welder Log
+         ============================================================ -->
+    <select id="findSpotWelderLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id           AS logId,
+            equipment_id     AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            weld_voltage_dc  AS weldVoltageDc,
+            weld_current_dc  AS weldCurrentDc,
+            weld_voltage_ac  AS weldVoltageAc,
+            weld_current_ac  AS weldCurrentAc,
+            weld_speed       AS weldSpeed
+        FROM spot_welder_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Sealer Log
+         ============================================================ -->
+    <select id="findSealerLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id                 AS logId,
+            equipment_id           AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            dispense_pressure_bar  AS dispensePressureBar,
+            sealer_temperature_c   AS sealerTemperatureC,
+            flow_rate_ml_s         AS flowRateMlS
+        FROM sealer_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Conveyor Log
+         ============================================================ -->
+    <select id="findConveyorLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id               AS logId,
+            equipment_id         AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            motor_temperature_c  AS motorTemperatureC,
+            motor_current_a      AS motorCurrentA,
+            moving_speed_m_s     AS movingSpeedMS
+        FROM conveyor_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Vision Inspection Log
+         ============================================================ -->
+    <select id="findVisionInspectionLogs" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id        AS logId,
+            equipment_id  AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            line_no       AS lineNo,
+            body_quality  AS bodyQuality,
+            body_id       AS bodyId
+        FROM vision_inspection_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Latest Logs by Equipment (uses prefix routing via UNION)
+         Returns last 20 rows from the applicable sensor log table.
+         ============================================================ -->
+    <select id="findLatestByEquipmentCode" resultType="com.example.backend.dto.LogEntryDto">
+        <![CDATA[
+        SELECT
+            log_id       AS logId,
+            equipment_id AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            status,
+            motor_current_a   AS motorCurrentA,
+            vacuum_pressure_kpa AS vacuumPressureKpa,
+            position_error_mm AS positionErrorMm,
+            NULL AS clampPressureBar,
+            NULL AS pneumaticPressureBar,
+            NULL AS clampPositionMm,
+            NULL AS robotSwivel,
+            NULL AS robotHorizontal,
+            NULL AS robotVertical,
+            NULL AS toolOffsetErrorMm,
+            NULL AS axisTempMaxC,
+            NULL AS weldVoltageDc,
+            NULL AS weldCurrentDc,
+            NULL AS weldVoltageAc,
+            NULL AS weldCurrentAc,
+            NULL AS weldSpeed,
+            NULL AS dispensePressureBar,
+            NULL AS sealerTemperatureC,
+            NULL AS flowRateMlS,
+            NULL AS motorTemperatureC,
+            NULL AS movingSpeedMS,
+            NULL AS bodyQuality,
+            NULL AS bodyId
+        FROM panel_feeder_log
+        WHERE equipment_id = #{equipmentId}
+        ORDER BY timestamp DESC
+        LIMIT 20
+        ]]>
+    </select>
+
+</mapper>

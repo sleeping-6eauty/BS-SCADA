@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.backend.mapper.EquipmentMetricsMapper">
+
+    <!-- ============================================================
+         Equipment Summary (from equipment_summary table)
+         ============================================================ -->
+    <resultMap id="equipmentSummaryResultMap" type="com.example.backend.dto.equipment.EquipmentSummaryDto">
+        <result property="equipmentId"    column="equipment_id" />
+        <result property="equipmentName"  column="equipment_name" />
+        <result property="lineNo"         column="line_no" />
+        <result property="zone"           column="zone" />
+        <result property="runTimeSec"     column="run_time_sec" />
+        <result property="idleTimeSec"    column="idle_time_sec" />
+        <result property="stopTimeSec"    column="stop_time_sec" />
+        <result property="alarmTimeSec"   column="alarm_time_sec" />
+        <result property="availability"   column="availability" />
+        <result property="mttfSec"        column="mttf_sec" />
+        <result property="mttrSec"        column="mttr_sec" />
+        <result property="mtbfSec"        column="mtbf_sec" />
+        <result property="healthScore"    column="health_score" />
+        <result property="remainingLife"  column="remaining_life" />
+        <result property="replacementDate" column="replacement_date" />
+    </resultMap>
+
+    <select id="findEquipmentSummary" resultMap="equipmentSummaryResultMap">
+        SELECT
+            es.equipment_id,
+            e.equipment_name,
+            e.line_no,
+            e.zone,
+            es.run_time_sec,
+            es.idle_time_sec,
+            es.stop_time_sec,
+            es.alarm_time_sec,
+            es.availability,
+            es.mttf_sec,
+            es.mttr_sec,
+            es.mtbf_sec,
+            es.health_score,
+            es.remaining_life,
+            es.replacement_date
+        FROM equipment_summary es
+        INNER JOIN equipment e ON es.equipment_id = e.equipment_id
+        WHERE es.equipment_id      = #{equipmentId}
+          AND es.summary_start_time = #{from}
+          AND es.summary_end_time   = #{to}
+        LIMIT 1
+    </select>
+
+    <!-- ============================================================
+         Equipment Status History
+         ============================================================ -->
+    <resultMap id="statusLogResultMap" type="com.example.backend.domain.EquipmentStatusLog">
+        <id   property="statusLogId"  column="status_log_id" />
+        <result property="equipmentId"  column="equipment_id" />
+        <result property="status"       column="status" />
+        <result property="startTime"    column="start_time" />
+        <result property="endTime"      column="end_time" />
+        <result property="durationSec"  column="duration_sec" />
+        <result property="createdAt"    column="created_at" />
+    </resultMap>
+
+    <select id="findEquipmentStatusHistory" resultMap="statusLogResultMap">
+        <![CDATA[
+        SELECT
+            status_log_id, equipment_id, status,
+            start_time, end_time, duration_sec, created_at
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND start_time < #{to}
+          AND IFNULL(end_time, #{to}) > #{from}
+        ORDER BY start_time
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         Equipment Alarms
+         ============================================================ -->
+    <select id="findEquipmentAlarms" resultType="com.example.backend.dto.dashboard.DashboardAlarmDto">
+        <![CDATA[
+        SELECT
+            alarm_id     AS alarmId,
+            equipment_id AS equipmentId,
+            DATE_FORMAT(timestamp, '%Y-%m-%d %H:%i:%s') AS timestamp,
+            alarm_type   AS alarmType,
+            alarm_text   AS alarmText,
+            alarm_memo   AS alarmMemo,
+            alarm_status AS alarmStatus
+        FROM alarm_log
+        WHERE equipment_id = #{equipmentId}
+          AND timestamp >= #{from}
+          AND timestamp < #{to}
+        ORDER BY timestamp DESC
+        ]]>
+    </select>
+
+</mapper>

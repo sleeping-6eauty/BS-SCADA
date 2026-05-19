@@ -29,6 +29,7 @@
     <insert id="assignEquipmentToUser" parameterType="map">
         INSERT INTO user_equipment (user_id, equipment_id)
         VALUES (#{userId}, #{equipmentId})
+        ON DUPLICATE KEY UPDATE equipment_id = VALUES(equipment_id)
     </insert>
 
     <insert id="assignEquipmentsToUser" parameterType="map">
@@ -38,5 +39,10 @@
             (#{userId}, #{equipmentId})
         </foreach>
     </insert>
+
+    <delete id="deleteByUserId">
+        DELETE FROM user_equipment
+        WHERE user_id = #{userId}
+    </delete>
 
 </mapper>

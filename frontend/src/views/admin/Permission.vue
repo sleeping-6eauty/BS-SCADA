@@ -1,17 +1,27 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppTopbar from '@/components/AppTopbar.vue'
+import {
+  getUsers,
+  createUser as apiCreateUser,
+  updateUser as apiUpdateUser,
+  deleteUser as apiDeleteUser,
+  getUserEquipments,
+  assignEquipmentsBatch,
+} from '@/api/user.js'
 
-const selectedUserId = ref('sminee')
-const checkedUserIds = ref(['sminee', 'jkim'])
+const selectedUserId = ref(null)
+const checkedUserIds = ref([])
 const userSearch = ref('')
 const equipSearch = ref('')
 const isAddingUser = ref(false)
 const isEditingUser = ref(false)
+const loading = ref(false)
+const errorMsg = ref('')
 
 const roleOptions = [
-  { value: 'admin', label: '관리자' },
-  { value: 'user', label: '일반 사용자' },
+  { value: 'ADMIN', label: '관리자' },
+  { value: 'USER', label: '일반 사용자' },
 ]
 
 const statusOptions = [
@@ -20,54 +30,49 @@ const statusOptions = [
   { value: 'pending', label: '대기' },
 ]
 
-const users = reactive([
-  {
-    id: 'sminee',
-    name: '이수민',
-    role: 'user',
-    roleLabel: '일반 사용자',
-    equipment: 'Conveyor D1',
-    status: 'active',
-    statusLabel: '활성',
-    lastLogin: '2024-05-24 08:58',
-    email: 'sminee@company.com',
-    avatarTone: 'green',
-    assignedEquipIds: ['robot-a1', 'conveyor-d1'],
-  },
-  {
-    id: 'jkim',
-    name: '김지훈',
-    role: 'admin',
-    roleLabel: '관리자',
-    equipment: 'Robot A1, Nutrunner B2',
-    status: 'active',
-    statusLabel: '활성',
-    lastLogin: '2024-05-24 10:20',
-    email: 'jkim@company.com',
-    avatarTone: 'purple',
-    assignedEquipIds: ['robot-a1', 'nutrunner-b2'],
-  },
-])
+const getRoleLabel = (role) => (role === 'ADMIN' ? '관리자' : '일반 사용자')
+const getStatusLabel = (status) => {
+  if (status === 'active') return '활성'
+  if (status === 'inactive') return '비활성'
+  return '대기'
+}
+const getAvatarTone = (role) => (role === 'ADMIN' ? 'purple' : 'green')
+
+const users = reactive([])
+
+const mapUserFromApi = (apiUser, equips = []) => ({
+  userId: apiUser.userId,
+  name: apiUser.name,
+  email: apiUser.email,
+  role: apiUser.role || 'USER',
+  roleLabel: getRoleLabel(apiUser.role),
+  status: apiUser.status || 'active',
+  statusLabel: getStatusLabel(apiUser.status),
+  lastLogin: '-',
+  avatarTone: getAvatarTone(apiUser.role),
+  equipment: equips.map((e) => e.equipmentName).join(', '),
+  assignedEquipIds: equips.map((e) => e.equipmentId),
+})
 
 const createEmptyUser = () => ({
-  id: '',
+  userId: null,
   name: '',
-  role: 'user',
+  role: 'USER',
   roleLabel: '일반 사용자',
   equipment: '',
   status: 'active',
   statusLabel: '활성',
   lastLogin: '-',
   email: '',
+  password: '',
   avatarTone: 'green',
   assignedEquipIds: [],
 })
 
 const createDraftFromUser = (user) => {
   if (!user) return createEmptyUser()
-
   return {
-    id: user.id,
+    userId: user.userId,
     name: user.name,
     role: user.role,
     roleLabel: user.roleLabel,
@@ -76,45 +81,53 @@ const createDraftFromUser = (user) => {
     statusLabel: user.statusLabel,
     lastLogin: user.lastLogin,
     email: user.email,
+    password: '',
     avatarTone: user.avatarTone,
     assignedEquipIds: [...user.assignedEquipIds],
   }
 }
 
-const newUser = reactive(createDraftFromUser(users[0]))
+const newUser = reactive(createEmptyUser())
 
 const summaryCards = computed(() => [
   { title: '전체 사용자', value: users.length, icon: '👥', tone: 'blue' },
-  { title: '관리자', value: users.filter((user) => user.role === 'admin').length, icon: '🛡️', tone: 'purple' },
-  { title: '일반 사용자', value: users.filter((user) => user.role === 'user').length, icon: '👤', tone: 'orange' },
+  { title: '관리자', value: users.filter((u) => u.role === 'ADMIN').length, icon: '🛡️', tone: 'purple' },
+  { title: '일반 사용자', value: users.filter((u) => u.role === 'USER').length, icon: '👤', tone: 'orange' },
 ])
 
 const allEquipment = [
-  { id: 'robot-a1', name: 'Robot A1' },
-  { id: 'nutrunner-b2', name: 'Nutrunner B2' },
-  { id: 'conveyor-d1', name: 'Conveyor D1' },
-  { id: 'press-c1', name: 'Press C1' },
-  { id: 'welding-e1', name: 'Welding E1' },
-  { id: 'agv-f1', name: 'AGV F1' },
+  { id: 'PLF-001', name: 'PLF-001' },
+  { id: 'PLF-002', name: 'PLF-002' },
+  { id: 'PLF-003', name: 'PLF-003' },
+  { id: 'JIG-001', name: 'JIG-001' },
+  { id: 'JIG-002', name: 'JIG-002' },
+  { id: 'JIG-003', name: 'JIG-003' },
+  { id: 'ROB-001', name: 'ROB-001' },
+  { id: 'ROB-002', name: 'ROB-002' },
+  { id: 'ROB-003', name: 'ROB-003' },
+  { id: 'WLD-001', name: 'WLD-001' },
+  { id: 'WLD-002', name: 'WLD-002' },
+  { id: 'WLD-003', name: 'WLD-003' },
+  { id: 'SLR-001', name: 'SLR-001' },
+  { id: 'SLR-002', name: 'SLR-002' },
+  { id: 'SLR-003', name: 'SLR-003' },
+  { id: 'VSI-001', name: 'VSI-001' },
+  { id: 'VSI-002', name: 'VSI-002' },
+  { id: 'VSI-003', name: 'VSI-003' },
+  { id: 'CNV-001', name: 'CNV-001' },
+  { id: 'CNV-002', name: 'CNV-002' },
+  { id: 'CNV-003', name: 'CNV-003' },
 ]
 
 const selectedUser = computed(
-  () => users.find((u) => u.id === selectedUserId.value) ?? users[0],
+  () => users.find((u) => u.userId === selectedUserId.value) ?? users[0] ?? null,
 )
 
 const filteredUsers = computed(() => {
   const query = userSearch.value.trim().toLowerCase()
   if (!query) return users
-
   return users.filter((user) =>
-    [
-      user.name,
-      user.id,
-      user.roleLabel,
-      user.equipment,
-      user.statusLabel,
-      user.email,
-    ]
+    [user.name, user.roleLabel, user.equipment, user.statusLabel, user.email]
       .join(' ')
       .toLowerCase()
       .includes(query),
@@ -140,32 +153,42 @@ const selectedEquipTags = computed(() =>
 
 const selectedCount = computed(() => checkedUserIds.value.length)
 
-const isUserChecked = (id) => checkedUserIds.value.includes(id)
+const isUserChecked = (userId) => checkedUserIds.value.includes(userId)
 
-const toggleUserCheck = (id) => {
-  if (isUserChecked(id)) {
-    checkedUserIds.value = checkedUserIds.value.filter((v) => v !== id)
+const toggleUserCheck = (userId) => {
+  if (isUserChecked(userId)) {
+    checkedUserIds.value = checkedUserIds.value.filter((v) => v !== userId)
   } else {
-    checkedUserIds.value = [...checkedUserIds.value, id]
+    checkedUserIds.value = [...checkedUserIds.value, userId]
   }
 }
 
 const toggleAllUsers = (event) => {
-  checkedUserIds.value = event.target.checked ? filteredUsers.value.map((u) => u.id) : []
+  checkedUserIds.value = event.target.checked ? filteredUsers.value.map((u) => u.userId) : []
 }
 
-const selectUser = (id) => {
+const selectUser = async (userId) => {
   isAddingUser.value = false
   isEditingUser.value = false
-  selectedUserId.value = id
-  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+  selectedUserId.value = userId
   equipSearch.value = ''
+  try {
+    const equips = await getUserEquipments(userId)
+    const user = users.find((u) => u.userId === userId)
+    if (user) {
+      user.assignedEquipIds = equips.map((e) => e.equipmentId)
+      user.equipment = equips.map((e) => e.equipmentName).join(', ')
+    }
+  } catch {
+    // 설비 로드 실패 시 무시
+  }
+  Object.assign(newUser, createDraftFromUser(selectedUser.value))
 }
 
-const editUser = (id = selectedUserId.value) => {
+const editUser = (userId = selectedUserId.value) => {
   isAddingUser.value = false
   isEditingUser.value = true
-  selectedUserId.value = id
+  selectedUserId.value = userId
   Object.assign(newUser, createDraftFromUser(selectedUser.value))
   equipSearch.value = ''
 }
@@ -191,7 +214,6 @@ const isEquipAssigned = (equipId) => activeAssignedEquipIds.value.includes(equip
 
 const toggleEquip = (equipId) => {
   if (!isDetailEditable.value) return
-
   if (newUser.assignedEquipIds.includes(equipId)) {
     newUser.assignedEquipIds = newUser.assignedEquipIds.filter((id) => id !== equipId)
   } else {
@@ -207,110 +229,102 @@ const removeEquipTag = (equipId) => {
 
 const canCreateUser = computed(() =>
   newUser.name.trim() !== '' &&
-  newUser.id.trim() !== '' &&
   newUser.email.trim() !== '' &&
-  !users.some((user) => user.id === newUser.id.trim()),
+  newUser.password.trim() !== '',
 )
 
-const saveNewUser = () => {
-  if (!canCreateUser.value) return
+const canSaveUser = computed(() =>
+  newUser.name.trim() !== '' &&
+  newUser.email.trim() !== '',
+)
 
-  const role = roleOptions.find((option) => option.value === newUser.role) ?? roleOptions[1]
-  const status = statusOptions.find((option) => option.value === newUser.status) ?? statusOptions[0]
-  const assignedEquipIds = [...newUser.assignedEquipIds]
+const loadUsers = async (selectAfter = null) => {
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    const apiUsers = await getUsers()
+    users.splice(0, users.length, ...apiUsers.map((u) => mapUserFromApi(u)))
 
-  users.push({
-    id: newUser.id.trim(),
-    name: newUser.name.trim(),
-    role: role.value,
-    roleLabel: role.label,
-    equipment: allEquipment
-      .filter((equipment) => assignedEquipIds.includes(equipment.id))
-      .map((equipment) => equipment.name)
-      .join(', '),
-    status: status.value,
-    statusLabel: status.label,
-    lastLogin: '-',
-    email: newUser.email.trim(),
-    avatarTone: role.value === 'admin' ? 'purple' : 'green',
-    assignedEquipIds,
-  })
+    const targetId = selectAfter ?? selectedUserId.value
+    const stillExists = users.some((u) => u.userId === targetId)
 
-  selectedUserId.value = newUser.id.trim()
-  checkedUserIds.value = [...checkedUserIds.value, newUser.id.trim()]
-  isAddingUser.value = false
-  isEditingUser.value = false
-  Object.assign(newUser, createDraftFromUser(selectedUser.value))
-}
-
-const canSaveUser = computed(() => {
-  const id = newUser.id.trim()
-
-  return (
-    newUser.name.trim() !== '' &&
-    id !== '' &&
-    newUser.email.trim() !== '' &&
-    users.every((user) => user.id === selectedUserId.value || user.id !== id)
-  )
-})
-
-const saveSelectedUser = () => {
-  if (!canSaveUser.value) return
-
-  const user = users.find((item) => item.id === selectedUserId.value)
-  if (!user) return
-
-  const role = roleOptions.find((option) => option.value === newUser.role) ?? roleOptions[1]
-  const status = statusOptions.find((option) => option.value === newUser.status) ?? statusOptions[0]
-  const assignedEquipIds = [...newUser.assignedEquipIds]
-  const nextId = newUser.id.trim()
-
-  user.id = nextId
-  user.name = newUser.name.trim()
-  user.role = role.value
-  user.roleLabel = role.label
-  user.status = status.value
-  user.statusLabel = status.label
-  user.email = newUser.email.trim()
-  user.equipment = allEquipment
-    .filter((equipment) => assignedEquipIds.includes(equipment.id))
-    .map((equipment) => equipment.name)
-    .join(', ')
-  user.assignedEquipIds = assignedEquipIds
-  user.avatarTone = role.value === 'admin' ? 'purple' : 'green'
-
-  checkedUserIds.value = checkedUserIds.value.map((id) => (id === selectedUserId.value ? nextId : id))
-  selectedUserId.value = nextId
-  isEditingUser.value = false
-  Object.assign(newUser, createDraftFromUser(user))
-}
-
-const deleteUsersByIds = (ids) => {
-  if (ids.length === 0) return
-
-  for (let index = users.length - 1; index >= 0; index -= 1) {
-    if (ids.includes(users[index].id)) {
-      users.splice(index, 1)
+    if (users.length > 0) {
+      await selectUser(stillExists ? targetId : users[0].userId)
+    } else {
+      selectedUserId.value = null
+      isAddingUser.value = true
+      isEditingUser.value = true
+      resetNewUser()
     }
+
+    checkedUserIds.value = users.map((u) => u.userId)
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
   }
+}
 
-  checkedUserIds.value = checkedUserIds.value.filter((id) => !ids.includes(id))
-
-  if (users.length === 0) {
-    selectedUserId.value = ''
-    isAddingUser.value = true
-    isEditingUser.value = true
-    resetNewUser()
-    return
+const saveNewUser = async () => {
+  if (!canCreateUser.value) return
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    const created = await apiCreateUser({
+      username: newUser.name.trim(),
+      email: newUser.email.trim(),
+      password: newUser.password.trim(),
+      role: newUser.role,
+    })
+    if (newUser.assignedEquipIds.length > 0) {
+      await assignEquipmentsBatch(created.userId, newUser.assignedEquipIds)
+    }
+    isAddingUser.value = false
+    isEditingUser.value = false
+    await loadUsers(created.userId)
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
   }
+}
 
-  if (!users.some((user) => user.id === selectedUserId.value)) {
-    selectedUserId.value = users[0].id
+const saveSelectedUser = async () => {
+  if (!canSaveUser.value) return
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    const currentId = selectedUserId.value
+    const payload = {
+      username: newUser.name.trim(),
+      email: newUser.email.trim(),
+      role: newUser.role,
+      status: newUser.status,
+    }
+    if (newUser.password.trim()) payload.password = newUser.password.trim()
+    await apiUpdateUser(currentId, payload)
+    isEditingUser.value = false
+    await loadUsers(currentId)
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
   }
+}
 
-  isAddingUser.value = false
-  isEditingUser.value = false
-  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+const deleteUsersByIds = async (ids) => {
+  if (ids.length === 0) return
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    await Promise.all(ids.map((userId) => apiDeleteUser(userId)))
+    checkedUserIds.value = checkedUserIds.value.filter((id) => !ids.includes(id))
+    await loadUsers()
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
+  }
 }
 
 const deleteCheckedUsers = () => {
@@ -319,7 +333,7 @@ const deleteCheckedUsers = () => {
 
 const deleteSelectedUser = () => {
   if (!selectedUser.value) return
-  deleteUsersByIds([selectedUser.value.id])
+  deleteUsersByIds([selectedUser.value.userId])
 }
 
 const handleSave = () => {
@@ -335,14 +349,12 @@ const refreshUsers = () => {
   equipSearch.value = ''
   isAddingUser.value = false
   isEditingUser.value = false
-
-  if (!selectedUser.value && users.length > 0) {
-    selectedUserId.value = users[0].id
-  }
-
-  checkedUserIds.value = users.map((user) => user.id)
-  Object.assign(newUser, createDraftFromUser(selectedUser.value))
+  loadUsers()
 }
+
+onMounted(() => {
+  loadUsers()
+})
 </script>
 
 <template>
@@ -397,25 +409,25 @@ const refreshUsers = () => {
               <tbody>
                 <tr
                   v-for="user in filteredUsers"
-                  :key="user.id"
-                  :class="{ selected: selectedUserId === user.id }"
-                  @click="selectUser(user.id)"
+                  :key="user.userId"
+                  :class="{ selected: selectedUserId === user.userId }"
+                  @click="selectUser(user.userId)"
                 >
                   <td class="col-check" @click.stop>
                     <input
                       type="checkbox"
-                      :checked="isUserChecked(user.id)"
-                      @change="toggleUserCheck(user.id)"
+                      :checked="isUserChecked(user.userId)"
+                      @change="toggleUserCheck(user.userId)"
                     />
                   </td>
                   <td class="name-cell">{{ user.name }}</td>
                   <td>{{ user.email }}</td>
-                  <td><span class="role-badge" :class="user.role">{{ user.roleLabel }}</span></td>
+                  <td><span class="role-badge" :class="user.role.toLowerCase()">{{ user.roleLabel }}</span></td>
                   <td class="equip-cell">{{ user.equipment }}</td>
                   <td><span class="status-badge" :class="user.status">{{ user.statusLabel }}</span></td>
                   <td class="manage-cell" @click.stop>
-                    <button type="button" class="icon-btn edit" title="수정" @click="editUser(user.id)">✎</button>
-                    <button type="button" class="icon-btn delete" title="삭제" @click="deleteUsersByIds([user.id])">🗑</button>
+                    <button type="button" class="icon-btn edit" title="수정" @click="editUser(user.userId)">✎</button>
+                    <button type="button" class="icon-btn delete" title="삭제" @click="deleteUsersByIds([user.userId])">🗑</button>
                   </td>
                 </tr>
                 <tr v-if="filteredUsers.length === 0">
@@ -438,26 +450,31 @@ const refreshUsers = () => {
           <h2>사용자 상세</h2>
 
           <div class="profile-block">
-            <dl v-if="!isDetailEditable" class="profile-list">
+            <dl v-if="!isDetailEditable && selectedUser" class="profile-list">
               <div><dt>이름</dt><dd>{{ selectedUser.name }}</dd></div>
               <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
               <div>
                 <dt>역할</dt>
-                <dd><span class="role-badge" :class="selectedUser.role">{{ selectedUser.roleLabel }}</span></dd>
+                <dd><span class="role-badge" :class="selectedUser.role.toLowerCase()">{{ selectedUser.roleLabel }}</span></dd>
               </div>
               <div>
                 <dt>상태</dt>
                 <dd><span class="status-badge" :class="selectedUser.status">{{ selectedUser.statusLabel }}</span></dd>
               </div>
             </dl>
-            <dl v-else class="profile-list form-list">
+            <p v-if="!isDetailEditable && !selectedUser && loading" class="loading-msg">불러오는 중...</p>
+            <dl v-if="isDetailEditable" class="profile-list form-list">
               <div>
                 <dt>이름</dt>
                 <dd><input v-model="newUser.name" type="text" placeholder="이름 입력" /></dd>
               </div>
               <div>
-                <dt>아이디</dt>
-                <dd><input v-model="newUser.id" type="text" placeholder="아이디 입력" /></dd>
+                <dt>이메일</dt>
+                <dd><input v-model="newUser.email" type="email" placeholder="email@company.com" /></dd>
+              </div>
+              <div v-if="isAddingUser">
+                <dt>비밀번호</dt>
+                <dd><input v-model="newUser.password" type="password" placeholder="비밀번호 입력" /></dd>
               </div>
               <div>
                 <dt>역할</dt>
@@ -478,10 +495,6 @@ const refreshUsers = () => {
                     </option>
                   </select>
                 </dd>
-              </div>
-              <div>
-                <dt>이메일</dt>
-                <dd><input v-model="newUser.email" type="email" placeholder="email@company.com" /></dd>
               </div>
             </dl>
           </div>
@@ -516,6 +529,8 @@ const refreshUsers = () => {
             </span>
           </div>
 
+          <p v-if="errorMsg" class="side-error">{{ errorMsg }}</p>
+
           <div class="side-actions">
             <button
               v-if="!isDetailEditable"
@@ -529,13 +544,13 @@ const refreshUsers = () => {
               v-else
               type="button"
               class="btn navy full"
-              :disabled="isAddingUser ? !canCreateUser : !canSaveUser"
+              :disabled="loading || (isAddingUser ? !canCreateUser : !canSaveUser)"
               @click="handleSave"
             >
-              저장
+              {{ loading ? '저장 중...' : '저장' }}
             </button>
             <button v-if="isDetailEditable" type="button" class="btn outline full" @click="cancelAddUser">취소</button>
-            <button v-if="!isAddingUser" type="button" class="btn danger-outline full" @click="deleteSelectedUser">🗑 사용자 삭제</button>
+            <button v-if="!isAddingUser" type="button" class="btn danger-outline full" :disabled="loading" @click="deleteSelectedUser">🗑 사용자 삭제</button>
           </div>
         </aside>
       </div>
@@ -816,6 +831,29 @@ const refreshUsers = () => {
   color: #722ed1;
 }
 
+.role-badge.user {
+  background: #fff0df;
+  color: #df7922;
+}
+
+.side-error {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fff0f0;
+  border: 1px solid #ffcdd2;
+  color: #c62828;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.loading-msg {
+  margin: 8px 0;
+  color: #9aa8bc;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .role-badge.operator {
   background: #e1f6ef;
   color: #12a985;
@@ -1028,18 +1066,32 @@ const refreshUsers = () => {
 
 .equip-check-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, 32px);
+  grid-auto-columns: 120px;
   gap: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
 }
 
 .equip-check {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  height: 32px;
   font-size: 13px;
   font-weight: 800;
   color: #0d2448;
   cursor: pointer;
+}
+
+.equip-check span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-list {
