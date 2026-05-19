@@ -19,21 +19,11 @@ CREATE TABLE IF NOT EXISTS alarm_log (
 CREATE TABLE IF NOT EXISTS mail_report (
   mail_id BIGINT NOT NULL AUTO_INCREMENT,
   alarm_id BIGINT NULL,
-  report_type VARCHAR(30) NULL DEFAULT 'ALARM',
-  recipient_user_id BIGINT NULL,
-  recipient_email VARCHAR(255) NULL,
-  recipient_name VARCHAR(100) NULL,
-  source_report_date DATE NULL,
   `timestamp` DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
   mail_text TEXT NULL,
   PRIMARY KEY (mail_id),
   INDEX idx_mail_report_alarm_id (alarm_id),
-  INDEX idx_mail_report_recipient_user_id (recipient_user_id),
-  INDEX idx_mail_report_report_type (report_type),
-  INDEX idx_mail_report_source_report_date (source_report_date),
   INDEX idx_mail_report_timestamp (`timestamp`),
-  UNIQUE INDEX uq_mail_report_alarm_recipient_type (alarm_id, recipient_user_id, report_type),
-  UNIQUE INDEX uq_mail_report_daily_recipient_date (report_type, recipient_user_id, source_report_date),
   CONSTRAINT fk_mail_report_alarm_id
     FOREIGN KEY (alarm_id)
     REFERENCES alarm_log (alarm_id)

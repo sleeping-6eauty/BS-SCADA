@@ -14,6 +14,7 @@ public class MailReport {
 	private LocalDate sourceReportDate;
 	private LocalDateTime timestamp;
 	private String mailText;
+	private String mailSubject;
 
 	public Long getMailId() {
 		return mailId;
@@ -85,5 +86,13 @@ public class MailReport {
 
 	public void setMailText(String mailText) {
 		this.mailText = mailText;
+	}
+
+	public String getMailSubject() {
+		return mailSubject;
+	}
+
+	public void setMailSubject(String mailSubject) {
+		this.mailSubject = mailSubject;
 	}
 }
