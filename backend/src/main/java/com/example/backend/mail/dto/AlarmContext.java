@@ -9,6 +9,7 @@ public class AlarmContext {
 	private String alarmType;
 	private String alarmStatus;
 	private String alarmMemo;
+	private String alarmText;
 	private Float healthScore;
 	private Long recipientUserId;
 	private String recipientEmail;
@@ -53,6 +54,14 @@ public class AlarmContext {
 
 	public void setAlarmMemo(String alarmMemo) {
 		this.alarmMemo = alarmMemo;
+	}
+
+	public String getAlarmText() {
+		return alarmText;
+	}
+
+	public void setAlarmText(String alarmText) {
+		this.alarmText = alarmText;
 	}
 
 	public Float getHealthScore() {

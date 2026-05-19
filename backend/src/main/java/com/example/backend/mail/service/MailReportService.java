@@ -23,13 +23,16 @@ public class MailReportService {
 	private static final int SIMILAR_CASE_LIMIT = 3;
 
 	private final MailReportMapper mailReportMapper;
+	private final MailDeliveryService mailDeliveryService;
 	private final ZoneId reportZoneId;
 
 	public MailReportService(
 		MailReportMapper mailReportMapper,
+		MailDeliveryService mailDeliveryService,
 		@Value("${mail.report.timezone:Asia/Seoul}") String reportTimezone
 	) {
 		this.mailReportMapper = mailReportMapper;
+		this.mailDeliveryService = mailDeliveryService;
 		this.reportZoneId = ZoneId.of(reportTimezone);
 	}
 
@@ -41,6 +44,7 @@ public class MailReportService {
 		mailReport.setMailText(buildMailTextWithRag(request));
 
 		mailReportMapper.insert(mailReport);
+		mailDeliveryService.send(mailReport);
 		return mailReport;
 	}
 
@@ -85,6 +89,7 @@ public class MailReportService {
 		mailReport.setMailText(buildDailySummaryText(reportDate, summary, items));
 
 		mailReportMapper.insert(mailReport);
+		mailDeliveryService.send(mailReport);
 		return mailReport;
 	}
 
@@ -110,9 +115,11 @@ public class MailReportService {
 		mailReport.setRecipientEmail(alarm.getRecipientEmail());
 		mailReport.setRecipientName(alarm.getRecipientName());
 		mailReport.setTimestamp(LocalDateTime.now(reportZoneId));
+		mailReport.setMailSubject(buildLowHealthAlarmSubject(alarm));
 		mailReport.setMailText(buildLowHealthAlarmText(alarm));
 
 		mailReportMapper.insert(mailReport);
+		mailDeliveryService.send(mailReport);
 		return mailReport;
 	}
 
@@ -139,15 +146,25 @@ public class MailReportService {
 
 	private String buildLowHealthAlarmText(AlarmContext alarm) {
 		StringBuilder builder = new StringBuilder();
-		builder.append("[Low Health Alarm Report]\n");
-		builder.append("- Recipient: ").append(nullSafe(alarm.getRecipientName()))
-			.append(" <").append(nullSafe(alarm.getRecipientEmail())).append(">\n");
-		builder.append("- Alarm ID: ").append(alarm.getAlarmId()).append("\n");
-		builder.append("- Equipment: ").append(nullSafe(alarm.getEquipmentId())).append("\n");
-		builder.append("- Health score: ").append(alarm.getHealthScore() == null ? "UNKNOWN" : alarm.getHealthScore()).append("\n");
-		builder.append("- Alarm type: ").append(nullSafe(alarm.getAlarmType())).append("\n");
-		builder.append("- Alarm status: ").append(nullSafe(alarm.getAlarmStatus())).append("\n");
-		builder.append("- Detected at: ").append(formatTime(alarm.getTimestamp())).append("\n\n");
+		builder.append("안녕하세요, 설비통합관리시스템입니다.\n\n");
+		builder.append("금일 ").append(nullSafe(alarm.getEquipmentId()))
+			.append(" 설비에서 이상 상태가 감지되어 아래와 같이 설비 이상 알림 메일을 송부드립니다.\n\n");
+		builder.append("1. 이상 발생 개요\n\n");
+		builder.append("- 발생 시간: ").append(formatTime(alarm.getTimestamp())).append("\n\n");
+		builder.append("- 대상 설비: ").append(nullSafe(alarm.getEquipmentId())).append("\n\n");
+		builder.append("- 이상 유형: ").append(nullSafe(alarm.getAlarmType())).append("\n\n");
+		builder.append("- 현재 상태: ").append(nullSafe(alarm.getAlarmStatus())).append("\n\n");
+		builder.append("- Health score: ").append(alarm.getHealthScore() == null ? "UNKNOWN" : alarm.getHealthScore()).append("\n\n");
+		builder.append("- AI 판단 결과: 정상 운전 조건에서 벗어난 비정상 패턴 감지\n\n");
+		builder.append("2. 주요 감지 내용\n\n");
+		builder.append("- ").append(detailText(alarm)).append("\n\n");
+		builder.append("- 현재 알람 상태와 설비 건전도 점수를 기준으로 담당자 확인이 필요합니다.\n\n");
+		builder.append("- 해당 설비에는 추가 점검 또는 조치가 필요할 수 있습니다.\n\n");
+		builder.append("3. 예상 영향\n\n");
+		builder.append("- 설비 품질 저하 가능성\n\n");
+		builder.append("- 후속 공정 지연 또는 재작업 가능성 증가\n\n");
+		builder.append("- 장시간 방치 시 운영 리스크 증가 가능성\n\n");
+		builder.append("4. RAG 기반 유사 사례\n\n");
 
 		List<RagSimilarCase> similarCases = mailReportMapper.findSimilarResolvedCases(
 			alarm.getAlarmId(),
@@ -155,7 +172,47 @@ public class MailReportService {
 			alarm.getAlarmType(),
 			SIMILAR_CASE_LIMIT
 		);
-		builder.append(buildRagSection(alarm, similarCases));
+		builder.append(buildKoreanRagSection(similarCases));
+		return builder.toString();
+	}
+
+	private String buildLowHealthAlarmSubject(AlarmContext alarm) {
+		return "[설비 이상 알림] " + nullSafe(alarm.getEquipmentId()) + " " + nullSafe(alarm.getAlarmType()) + " 감지";
+	}
+
+	private String detailText(AlarmContext alarm) {
+		if (alarm.getAlarmText() != null && !alarm.getAlarmText().isBlank()) {
+			return alarm.getAlarmText().trim();
+		}
+		if (alarm.getAlarmMemo() != null && !alarm.getAlarmMemo().isBlank()) {
+			return alarm.getAlarmMemo().trim();
+		}
+		return "상세 알람 내용이 등록되지 않았습니다.";
+	}
+
+	private String buildKoreanRagSection(List<RagSimilarCase> similarCases) {
+		StringBuilder builder = new StringBuilder();
+		if (similarCases == null || similarCases.isEmpty()) {
+			builder.append("과거 유사 사례 검색 결과, 아래 사례와 유사한 패턴이 확인되었습니다.\n\n");
+			builder.append("- 유사 사례 1: 점검 가능한 유사 사례가 없습니다.\n\n");
+			builder.append("  - 추천 방안: 안전 확인 후 설비 상태 점검\n");
+			builder.append("  - 조치 내용: 설비 로그 확인 및 육안 점검\n");
+			return builder.toString();
+		}
+
+		builder.append("과거 유사 사례 검색 결과, 아래 사례와 유사한 패턴이 확인되었습니다.\n\n");
+		for (int i = 0; i < similarCases.size(); i++) {
+			RagSimilarCase similar = similarCases.get(i);
+			builder.append("- 유사 사례 ").append(i + 1).append(": ")
+				.append(nullSafe(similar.getEquipmentId())).append(" / ")
+				.append(nullSafe(similar.getAlarmType())).append(" / ")
+				.append(formatTime(similar.getTimestamp())).append("\n\n");
+			builder.append("  - 추천 방안: ").append(trimText(similar.getAlarmMemo(), 80)).append("\n");
+			builder.append("  - 조치 내용: 과거 RESOLVED 처리 내용을 참고하여 점검\n");
+			if (i < similarCases.size() - 1) {
+				builder.append("\n");
+			}
+		}
 		return builder.toString();
 	}
 
