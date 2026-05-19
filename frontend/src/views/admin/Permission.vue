@@ -96,12 +96,27 @@ const summaryCards = computed(() => [
 ])
 
 const allEquipment = [
-  { id: 'RBT-A1', name: 'Robot A1' },
-  { id: 'NTR-B2', name: 'Nutrunner B2' },
-  { id: 'CNV-D1', name: 'Conveyor D1' },
-  { id: 'PRS-C1', name: 'Press C1' },
-  { id: 'WLD-E1', name: 'Welding E1' },
-  { id: 'AGV-F1', name: 'AGV F1' },
+  { id: 'PLF-001', name: 'PLF-001' },
+  { id: 'PLF-002', name: 'PLF-002' },
+  { id: 'PLF-003', name: 'PLF-003' },
+  { id: 'JIG-001', name: 'JIG-001' },
+  { id: 'JIG-002', name: 'JIG-002' },
+  { id: 'JIG-003', name: 'JIG-003' },
+  { id: 'ROB-001', name: 'ROB-001' },
+  { id: 'ROB-002', name: 'ROB-002' },
+  { id: 'ROB-003', name: 'ROB-003' },
+  { id: 'WLD-001', name: 'WLD-001' },
+  { id: 'WLD-002', name: 'WLD-002' },
+  { id: 'WLD-003', name: 'WLD-003' },
+  { id: 'SLR-001', name: 'SLR-001' },
+  { id: 'SLR-002', name: 'SLR-002' },
+  { id: 'SLR-003', name: 'SLR-003' },
+  { id: 'VSI-001', name: 'VSI-001' },
+  { id: 'VSI-002', name: 'VSI-002' },
+  { id: 'VSI-003', name: 'VSI-003' },
+  { id: 'CNV-001', name: 'CNV-001' },
+  { id: 'CNV-002', name: 'CNV-002' },
+  { id: 'CNV-003', name: 'CNV-003' },
 ]
 
 const selectedUser = computed(
@@ -448,7 +463,7 @@ onMounted(() => {
               </div>
             </dl>
             <p v-if="!isDetailEditable && !selectedUser && loading" class="loading-msg">불러오는 중...</p>
-            <dl v-else class="profile-list form-list">
+            <dl v-if="isDetailEditable" class="profile-list form-list">
               <div>
                 <dt>이름</dt>
                 <dd><input v-model="newUser.name" type="text" placeholder="이름 입력" /></dd>
@@ -1051,18 +1066,32 @@ onMounted(() => {
 
 .equip-check-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, 32px);
+  grid-auto-columns: 120px;
   gap: 6px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
 }
 
 .equip-check {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  height: 32px;
   font-size: 13px;
   font-weight: 800;
   color: #0d2448;
   cursor: pointer;
+}
+
+.equip-check span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-list {
