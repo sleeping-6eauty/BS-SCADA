@@ -1,11 +1,53 @@
 <script setup>
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import loginBg from '@/assets/login-bg.png'
 import loginLeftLogo from '@/assets/login-left.png'
 import loginRightLogo from '@/assets/login-right.png'
+import hidePw from '@/assets/hide-pw.png'
+import showPw from '@/assets/show-pw.png'
+import { signup } from '@/api/auth.js'
 
+const router = useRouter()
+
+// 이미지
 const loginBgSrc = loginBg
 const loginLeftLogoSrc = loginLeftLogo
 const loginRightLogoSrc = loginRightLogo
+
+// 폼 상태
+const name = ref('')
+const email = ref('')
+const password = ref('')
+const passwordConfirm = ref('')
+const showPassword = ref(false)
+const showPasswordConfirm = ref(false)
+const loading = ref(false)
+const errorMsg = ref('')
+
+const passwordIconSrc = computed(() => (showPassword.value ? hidePw : showPw))
+const passwordConfirmIconSrc = computed(() => (showPasswordConfirm.value ? hidePw : showPw))
+
+async function handleSignup() {
+  if (!name.value || !email.value || !password.value || !passwordConfirm.value) {
+    errorMsg.value = '모든 항목을 입력해주세요.'
+    return
+  }
+  if (password.value !== passwordConfirm.value) {
+    errorMsg.value = '비밀번호가 일치하지 않습니다.'
+    return
+  }
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    await signup({ username: name.value, email: email.value, password: password.value })
+    router.push('/login')
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <template>
@@ -20,7 +62,7 @@ const loginRightLogoSrc = loginRightLogo
     </section>
 
     <section class="form-panel" aria-label="회원가입">
-      <form class="auth-card">
+      <form class="auth-card" @submit.prevent="handleSignup">
         <div class="form-heading">
           <img class="brand-logo-right" :src="loginRightLogoSrc" alt="회원가입 로고" aria-hidden="true" />
           <h2>회원가입</h2>
@@ -30,20 +72,22 @@ const loginRightLogoSrc = loginRightLogo
         <label class="field-label" for="name">이름</label>
         <div class="input-wrap">
           <span class="input-icon user" aria-hidden="true"></span>
-          <input id="name" type="text" placeholder="이름을 입력하세요" autocomplete="name" />
+          <input id="name" type="text" v-model="name" placeholder="이름을 입력하세요" autocomplete="name" />
         </div>
 
         <label class="field-label" for="email">이메일</label>
         <div class="input-wrap">
           <span class="input-icon mail" aria-hidden="true"></span>
-          <input id="email" type="email" placeholder="이메일을 입력하세요" autocomplete="email" />
+          <input id="email" type="email" v-model="email" placeholder="이메일을 입력하세요" autocomplete="email" />
         </div>
 
         <label class="field-label" for="password">비밀번호</label>
         <div class="input-wrap password-wrap">
           <span class="input-icon lock" aria-hidden="true"></span>
-          <input id="password" type="password" placeholder="비밀번호를 입력하세요" autocomplete="new-password" />
-          <button class="ghost-icon eye" type="button" aria-label="비밀번호 보기"></button>
+          <input id="password" :type="showPassword ? 'text' : 'password'" v-model="password" placeholder="비밀번호를 입력하세요" autocomplete="new-password" />
+          <button class="ghost-icon eye" type="button" @click="showPassword = !showPassword" :aria-label="showPassword ? '비밀번호 숨기기' : '비밀번호 보기'">
+            <img class="eye-icon" :src="passwordIconSrc" alt="비밀번호 토글" />
+          </button>
         </div>
 
         <label class="field-label" for="password-confirm">비밀번호 확인</label>
@@ -51,14 +95,21 @@ const loginRightLogoSrc = loginRightLogo
           <span class="input-icon lock" aria-hidden="true"></span>
           <input
             id="password-confirm"
-            type="password"
+            :type="showPasswordConfirm ? 'text' : 'password'"
+            v-model="passwordConfirm"
             placeholder="비밀번호를 다시 입력하세요"
             autocomplete="new-password"
           />
-          <button class="ghost-icon eye" type="button" aria-label="비밀번호 확인 보기"></button>
+          <button class="ghost-icon eye" type="button" @click="showPasswordConfirm = !showPasswordConfirm" :aria-label="showPasswordConfirm ? '비밀번호 숨기기' : '비밀번호 보기'">
+            <img class="eye-icon" :src="passwordConfirmIconSrc" alt="비밀번호 확인 토글" />
+          </button>
         </div>
 
-        <button class="primary-button" type="submit">회원가입</button>
+        <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
+
+        <button class="primary-button" type="submit" :disabled="loading">
+          {{ loading ? '가입 중...' : '회원가입' }}
+        </button>
 
         <p class="auth-link">
           이미 계정이 있으신가요?
@@ -665,27 +716,22 @@ const loginRightLogoSrc = loginRightLogo
   background: transparent;
 }
 
-.ghost-icon.eye::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 7px;
+.ghost-icon.eye .eye-icon {
   width: 20px;
-  height: 12px;
-  border: 3px solid currentColor;
-  border-radius: 50%;
+  height: 20px;
+  object-fit: contain;
 }
 
-.ghost-icon.eye::after {
-  content: '';
-  position: absolute;
-  left: 1px;
-  top: 11px;
-  width: 23px;
-  height: 3px;
-  border-radius: 4px;
-  background: currentColor;
-  transform: rotate(-34deg);
+.error-msg {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #fff0f0;
+  border: 1px solid #ffcdd2;
+  color: #c62828;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .primary-button {
@@ -704,6 +750,11 @@ const loginRightLogoSrc = loginRightLogo
 
 .primary-button:hover {
   background: linear-gradient(180deg, #1677ff, #075ce9);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .auth-link {

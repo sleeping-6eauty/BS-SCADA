@@ -1,19 +1,50 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import loginBg from '@/assets/login-bg.png'
 import loginLeftLogo from '@/assets/login-left.png'
 import loginRightLogo from '@/assets/login-right.png'
 import hidePw from '@/assets/hide-pw.png'
 import showPw from '@/assets/show-pw.png'
+import { login } from '@/api/auth.js'
 
-const showPassword = ref(false)
+const router = useRouter()
+
+// 이미지
 const loginLeftLogoSrc = loginLeftLogo
 const loginRightLogoSrc = loginRightLogo
 const loginBgSrc = loginBg
+
+// 폼 상태
+const email = ref('')
+const password = ref('')
+const showPassword = ref(false)
+const loading = ref(false)
+const errorMsg = ref('')
+
 const passwordIconSrc = computed(() => (showPassword.value ? hidePw : showPw))
 
 const togglePasswordVisibility = () => {
   showPassword.value = !showPassword.value
+}
+
+async function handleLogin() {
+  if (!email.value || !password.value) {
+    errorMsg.value = '이메일과 비밀번호를 입력해주세요.'
+    return
+  }
+  loading.value = true
+  errorMsg.value = ''
+  try {
+    const data = await login(email.value, password.value)
+    localStorage.setItem('token', data.accessToken)
+    localStorage.setItem('user', JSON.stringify({ id: data.id, username: data.username, role: data.role }))
+    router.push('/dashboard')
+  } catch (e) {
+    errorMsg.value = e.message
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -29,7 +60,7 @@ const togglePasswordVisibility = () => {
     </section>
 
     <section class="form-panel" aria-label="로그인">
-      <form class="auth-card">
+      <form class="auth-card" @submit.prevent="handleLogin">
         <div class="form-heading">
           <img class="brand-logo-right" :src="loginRightLogoSrc" alt="로그인 로고" aria-hidden="true" />
           <h2>로그인</h2>
@@ -42,6 +73,7 @@ const togglePasswordVisibility = () => {
           <input
             id="user-id"
             type="email"
+            v-model="email"
             placeholder="이메일을 입력하세요"
             autocomplete="username"
           />
@@ -53,6 +85,7 @@ const togglePasswordVisibility = () => {
           <input
             id="password"
             :type="showPassword ? 'text' : 'password'"
+            v-model="password"
             placeholder="비밀번호를 입력하세요"
             autocomplete="current-password"
           />
@@ -66,7 +99,11 @@ const togglePasswordVisibility = () => {
           </button>
         </div>
 
-        <button class="primary-button" type="submit">로그인</button>
+        <p v-if="errorMsg" class="error-msg">{{ errorMsg }}</p>
+
+        <button class="primary-button" type="submit" :disabled="loading">
+          {{ loading ? '로그인 중...' : '로그인' }}
+        </button>
 
         <p class="auth-link">
           계정이 없으신가요?
@@ -472,6 +509,18 @@ const togglePasswordVisibility = () => {
   font-weight: 900;
 }
 
+.error-msg {
+  margin: 0 0 16px;
+  padding: 11px 16px;
+  border-radius: 8px;
+  background: #fff0f0;
+  border: 1px solid #ffcdd2;
+  color: #c62828;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
 .primary-button {
   width: 100%;
   height: 68px;
@@ -487,6 +536,11 @@ const togglePasswordVisibility = () => {
 
 .primary-button:hover {
   background: linear-gradient(180deg, #1677ff, #075ce9);
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .auth-link {
