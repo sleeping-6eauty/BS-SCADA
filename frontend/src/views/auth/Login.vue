@@ -1,106 +1,69 @@
 <script setup>
-const features = [
-  {
-    title: '실시간 모니터링',
-    description: '설비 상태 실시간 확인',
-    icon: 'shield',
-  },
-  {
-    title: '알람 관리',
-    description: '신속한 알람 감지 및 처리',
-    icon: 'bell',
-  },
-  {
-    title: '데이터 분석',
-    description: '정확한 데이터로 효율적 운영',
-    icon: 'chart',
-  },
-]
+import { ref, computed } from 'vue'
+import loginBg from '@/assets/login-bg.png'
+import loginLeftLogo from '@/assets/login-left.png'
+import loginRightLogo from '@/assets/login-right.png'
+import hidePw from '@/assets/hide-pw.png'
+import showPw from '@/assets/show-pw.png'
+
+const showPassword = ref(false)
+const loginLeftLogoSrc = loginLeftLogo
+const loginRightLogoSrc = loginRightLogo
+const loginBgSrc = loginBg
+const passwordIconSrc = computed(() => (showPassword.value ? hidePw : showPw))
+
+const togglePasswordVisibility = () => {
+  showPassword.value = !showPassword.value
+}
 </script>
 
 <template>
   <main class="auth-page login-page">
     <section class="brand-panel" aria-label="설비 알람 관리 시스템 소개">
+      <div class="brand-bg" :style="{ backgroundImage: `url(${loginBgSrc})` }" aria-hidden="true"></div>
       <div class="brand-copy">
-        <div class="line-robot mark-light" aria-hidden="true">
-          <svg viewBox="0 0 80 80" role="img">
-            <path d="M18 64h38M24 56h26M36 52V39M29 39l-9 9M39 35l16-10M54 24l8 9" />
-            <circle cx="35" cy="31" r="8" />
-            <circle cx="60" cy="22" r="7" />
-            <circle cx="66" cy="37" r="4" />
-            <path d="M24 56h26v8H24zM18 48l6 8M20 48h10M43 31l10-6M48 16l7 6" />
-          </svg>
-        </div>
+        <img class="brand-logo-left" :src="loginLeftLogoSrc" alt="로그인 로고" aria-hidden="true" />
         <h1>설비 알람 관리 시스템</h1>
         <p>실시간 모니터링으로 설비의 안정성과 효율성을 높입니다.</p>
       </div>
-
-      <div class="factory-scene" aria-hidden="true">
-        <div class="grid-floor"></div>
-        <div class="robot-arm">
-          <span class="joint joint-a"></span>
-          <span class="joint joint-b"></span>
-          <span class="joint joint-c"></span>
-          <span class="arm arm-a"></span>
-          <span class="arm arm-b"></span>
-          <span class="arm arm-c"></span>
-          <span class="base"></span>
-        </div>
-        <div class="conveyor">
-          <span v-for="index in 9" :key="index"></span>
-        </div>
-        <div class="box box-a"></div>
-        <div class="box box-b"></div>
-        <div class="tower tower-a"></div>
-        <div class="tower tower-b"></div>
-        <div class="console"></div>
-      </div>
-
-      <ul class="feature-row">
-        <li v-for="feature in features" :key="feature.title">
-          <span class="feature-icon" :class="feature.icon" aria-hidden="true"></span>
-          <strong>{{ feature.title }}</strong>
-          <small>{{ feature.description }}</small>
-        </li>
-      </ul>
     </section>
 
     <section class="form-panel" aria-label="로그인">
       <form class="auth-card">
         <div class="form-heading">
-          <div class="line-robot mark-blue" aria-hidden="true">
-            <svg viewBox="0 0 80 80">
-              <path d="M18 64h38M24 56h26M36 52V39M29 39l-9 9M39 35l16-10M54 24l8 9" />
-              <circle cx="35" cy="31" r="8" />
-              <circle cx="60" cy="22" r="7" />
-              <circle cx="66" cy="37" r="4" />
-              <path d="M24 56h26v8H24zM18 48l6 8M20 48h10M43 31l10-6M48 16l7 6" />
-            </svg>
-          </div>
-          <h2>설비 알람 관리 시스템</h2>
+          <img class="brand-logo-right" :src="loginRightLogoSrc" alt="로그인 로고" aria-hidden="true" />
+          <h2>로그인</h2>
           <p>계정으로 로그인하여 시스템을 이용하세요.</p>
         </div>
 
-        <label class="field-label" for="user-id">아이디</label>
+        <label class="field-label" for="user-id">이메일</label>
         <div class="input-wrap">
           <span class="input-icon user" aria-hidden="true"></span>
-          <input id="user-id" type="text" placeholder="아이디를 입력하세요" autocomplete="username" />
+          <input
+            id="user-id"
+            type="email"
+            placeholder="이메일을 입력하세요"
+            autocomplete="username"
+          />
         </div>
 
         <label class="field-label" for="password">비밀번호</label>
-        <div class="input-wrap">
+        <div class="input-wrap password-wrap">
           <span class="input-icon lock" aria-hidden="true"></span>
-          <input id="password" type="password" placeholder="비밀번호를 입력하세요" autocomplete="current-password" />
-          <button class="ghost-icon eye" type="button" aria-label="비밀번호 보기"></button>
-        </div>
-
-        <div class="form-options">
-          <label class="check-row">
-            <input type="checkbox" />
-            <span></span>
-            아이디 저장
-          </label>
-          <a href="#">비밀번호 찾기</a>
+          <input
+            id="password"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="비밀번호를 입력하세요"
+            autocomplete="current-password"
+          />
+          <button
+            class="ghost-icon eye"
+            type="button"
+            @click="togglePasswordVisibility"
+            :aria-label="showPassword ? '비밀번호 숨기기' : '비밀번호 보기'"
+          >
+            <img class="eye-icon" :src="passwordIconSrc" alt="비밀번호 토글" />
+          </button>
         </div>
 
         <button class="primary-button" type="submit">로그인</button>
@@ -146,6 +109,16 @@ const features = [
     #031b43;
 }
 
+.brand-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0.45;
+  filter: saturate(0.8) brightness(0.75);
+  z-index: 0;
+}
+
 .brand-panel::before {
   content: '';
   position: absolute;
@@ -172,6 +145,44 @@ const features = [
   z-index: 1;
   margin-bottom: 42px;
   text-align: center;
+}
+
+.brand-logo-left,
+.brand-logo-right {
+  width: 92px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 24px;
+}
+
+.password-wrap {
+  position: relative;
+}
+
+.ghost-icon.eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #4a6d9f;
+  background: rgba(7, 65, 150, 0.06);
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ghost-icon.eye .eye-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.ghost-icon.eye:hover {
+  background: rgba(7, 65, 150, 0.12);
 }
 
 .line-robot {
@@ -211,164 +222,6 @@ const features = [
   font-weight: 650;
 }
 
-.factory-scene {
-  position: relative;
-  z-index: 1;
-  height: 386px;
-  opacity: 0.86;
-}
-
-.grid-floor {
-  position: absolute;
-  inset: 38px -70px 0;
-  background:
-    linear-gradient(90deg, transparent 49%, rgba(25, 140, 255, 0.42) 50%, transparent 51%) 0 0 / 86px 86px,
-    linear-gradient(transparent 49%, rgba(25, 140, 255, 0.42) 50%, transparent 51%) 0 0 / 86px 86px;
-  transform: perspective(520px) rotateX(58deg);
-  transform-origin: bottom;
-}
-
-.robot-arm,
-.conveyor,
-.box,
-.tower,
-.console {
-  position: absolute;
-  filter: drop-shadow(0 12px 18px rgba(0, 80, 180, 0.28));
-}
-
-.robot-arm {
-  left: 42px;
-  bottom: 92px;
-  width: 260px;
-  height: 260px;
-}
-
-.robot-arm .base {
-  position: absolute;
-  left: 18px;
-  bottom: 0;
-  width: 118px;
-  height: 72px;
-  border: 2px solid #1a8cff;
-  background: linear-gradient(145deg, rgba(23, 118, 235, 0.82), rgba(8, 48, 105, 0.92));
-}
-
-.joint {
-  position: absolute;
-  z-index: 2;
-  width: 54px;
-  height: 54px;
-  border: 9px solid #1387ff;
-  border-radius: 50%;
-  background: #06316c;
-}
-
-.joint-a {
-  left: 44px;
-  bottom: 58px;
-}
-
-.joint-b {
-  left: 122px;
-  bottom: 174px;
-}
-
-.joint-c {
-  right: 34px;
-  bottom: 114px;
-}
-
-.arm {
-  position: absolute;
-  height: 48px;
-  border: 2px solid #36a0ff;
-  background: linear-gradient(90deg, #0b5ab5, #1689f7);
-  transform-origin: left center;
-}
-
-.arm-a {
-  left: 72px;
-  bottom: 104px;
-  width: 128px;
-  transform: rotate(-58deg);
-}
-
-.arm-b {
-  left: 146px;
-  bottom: 172px;
-  width: 120px;
-  transform: rotate(36deg);
-}
-
-.arm-c {
-  right: 12px;
-  bottom: 96px;
-  width: 76px;
-  transform: rotate(78deg);
-}
-
-.conveyor {
-  left: 0;
-  right: 120px;
-  bottom: 56px;
-  height: 48px;
-  border: 2px solid #147ade;
-  background: rgba(4, 45, 96, 0.92);
-}
-
-.conveyor span {
-  display: inline-block;
-  width: 28px;
-  height: 28px;
-  margin: 9px 10px;
-  border: 3px solid #176fca;
-  border-radius: 50%;
-}
-
-.box {
-  width: 62px;
-  height: 48px;
-  border: 2px solid #177ee7;
-  background: rgba(18, 83, 168, 0.8);
-}
-
-.box-a {
-  left: 95px;
-  bottom: 116px;
-}
-
-.box-b {
-  left: 210px;
-  bottom: 124px;
-}
-
-.tower {
-  bottom: 126px;
-  width: 54px;
-  border: 2px solid rgba(42, 132, 229, 0.72);
-  background: rgba(8, 47, 102, 0.78);
-}
-
-.tower-a {
-  right: 190px;
-  height: 136px;
-}
-
-.tower-b {
-  right: 112px;
-  height: 104px;
-}
-
-.console {
-  right: 0;
-  bottom: 48px;
-  width: 138px;
-  height: 120px;
-  border: 2px solid #176fca;
-  background: linear-gradient(145deg, rgba(14, 67, 138, 0.86), rgba(2, 28, 66, 0.95));
-  transform: skewY(-12deg);
-}
 
 .feature-row {
   position: relative;
@@ -537,6 +390,7 @@ const features = [
   border-radius: 9px;
   background: #fff;
   box-shadow: inset 0 1px 0 rgba(16, 49, 98, 0.02);
+  position: relative;
 }
 
 .input-wrap:focus-within {
@@ -550,7 +404,7 @@ const features = [
   height: 100%;
   border: 0;
   outline: 0;
-  padding: 0 18px;
+  padding: 0 48px 0 18px;
   color: #102653;
   font-size: 20px;
   font-weight: 700;
@@ -612,68 +466,10 @@ const features = [
   background: transparent;
 }
 
-.ghost-icon.eye::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 7px;
-  width: 20px;
-  height: 12px;
-  border: 3px solid currentColor;
-  border-radius: 50%;
-}
 
-.ghost-icon.eye::after {
-  content: '';
-  position: absolute;
-  left: 1px;
-  top: 11px;
-  width: 23px;
-  height: 3px;
-  border-radius: 4px;
-  background: currentColor;
-  transform: rotate(-34deg);
-}
-
-.form-options {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: -5px 0 42px;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.form-options a,
 .auth-link a {
   color: var(--blue);
   font-weight: 900;
-}
-
-.check-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: #273d73;
-}
-
-.check-row input {
-  position: absolute;
-  opacity: 0;
-}
-
-.check-row span {
-  width: 26px;
-  height: 26px;
-  border: 2px solid #c7d2e4;
-  border-radius: 6px;
-  background: #f8fbff;
-}
-
-.check-row input:checked + span {
-  border-color: var(--blue);
-  background: var(--blue);
-  box-shadow: inset 0 0 0 5px #fff;
 }
 
 .primary-button {

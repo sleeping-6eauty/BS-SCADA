@@ -387,7 +387,7 @@ const refreshUsers = () => {
                     />
                   </th>
                   <th>이름</th>
-                  <th>아이디</th>
+                  <th>이메일</th>
                   <th>역할</th>
                   <th>담당 설비</th>
                   <th>상태</th>
@@ -409,7 +409,7 @@ const refreshUsers = () => {
                     />
                   </td>
                   <td class="name-cell">{{ user.name }}</td>
-                  <td>{{ user.id }}</td>
+                  <td>{{ user.email }}</td>
                   <td><span class="role-badge" :class="user.role">{{ user.roleLabel }}</span></td>
                   <td class="equip-cell">{{ user.equipment }}</td>
                   <td><span class="status-badge" :class="user.status">{{ user.statusLabel }}</span></td>
@@ -440,7 +440,7 @@ const refreshUsers = () => {
           <div class="profile-block">
             <dl v-if="!isDetailEditable" class="profile-list">
               <div><dt>이름</dt><dd>{{ selectedUser.name }}</dd></div>
-              <div><dt>아이디</dt><dd>{{ selectedUser.id }}</dd></div>
+              <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
               <div>
                 <dt>역할</dt>
                 <dd><span class="role-badge" :class="selectedUser.role">{{ selectedUser.roleLabel }}</span></dd>
@@ -449,7 +449,6 @@ const refreshUsers = () => {
                 <dt>상태</dt>
                 <dd><span class="status-badge" :class="selectedUser.status">{{ selectedUser.statusLabel }}</span></dd>
               </div>
-              <div><dt>이메일</dt><dd>{{ selectedUser.email }}</dd></div>
             </dl>
             <dl v-else class="profile-list form-list">
               <div>
