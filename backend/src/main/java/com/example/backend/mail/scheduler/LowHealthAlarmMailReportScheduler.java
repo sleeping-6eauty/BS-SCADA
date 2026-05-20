@@ -35,6 +35,12 @@ public class LowHealthAlarmMailReportScheduler {
 			List<MailReport> reports = mailReportService.createPendingLowHealthAlarmReports(healthScoreThreshold, batchSize);
 			if (!reports.isEmpty()) {
 				logger.info("pending low health alarm mail reports generated: {}", reports.size());
+			} else {
+				logger.info(
+					"no pending low health alarm mail reports: threshold={}, batchSize={}",
+					healthScoreThreshold,
+					batchSize
+				);
 			}
 		} catch (Exception exception) {
 			logger.error("failed to generate pending low health alarm mail reports", exception);

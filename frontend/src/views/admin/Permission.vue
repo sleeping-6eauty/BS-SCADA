@@ -8,6 +8,7 @@ import {
   deleteUser as apiDeleteUser,
   getUserEquipments,
   assignEquipmentsBatch,
+  getEquipmentNames,
 } from '@/api/user.js'
 
 const selectedUserId = ref(null)
@@ -50,7 +51,7 @@ const mapUserFromApi = (apiUser, equips = []) => ({
   statusLabel: getStatusLabel(apiUser.status),
   lastLogin: '-',
   avatarTone: getAvatarTone(apiUser.role),
-  equipment: equips.map((e) => e.equipmentName).join(', '),
+  equipment: equips.map((e) => e.equipmentId).join(', '),
   assignedEquipIds: equips.map((e) => e.equipmentId),
 })
 
@@ -95,29 +96,7 @@ const summaryCards = computed(() => [
   { title: '일반 사용자', value: users.filter((u) => u.role === 'USER').length, icon: '👤', tone: 'orange' },
 ])
 
-const allEquipment = [
-  { id: 'PLF-001', name: 'PLF-001' },
-  { id: 'PLF-002', name: 'PLF-002' },
-  { id: 'PLF-003', name: 'PLF-003' },
-  { id: 'JIG-001', name: 'JIG-001' },
-  { id: 'JIG-002', name: 'JIG-002' },
-  { id: 'JIG-003', name: 'JIG-003' },
-  { id: 'ROB-001', name: 'ROB-001' },
-  { id: 'ROB-002', name: 'ROB-002' },
-  { id: 'ROB-003', name: 'ROB-003' },
-  { id: 'WLD-001', name: 'WLD-001' },
-  { id: 'WLD-002', name: 'WLD-002' },
-  { id: 'WLD-003', name: 'WLD-003' },
-  { id: 'SLR-001', name: 'SLR-001' },
-  { id: 'SLR-002', name: 'SLR-002' },
-  { id: 'SLR-003', name: 'SLR-003' },
-  { id: 'VSI-001', name: 'VSI-001' },
-  { id: 'VSI-002', name: 'VSI-002' },
-  { id: 'VSI-003', name: 'VSI-003' },
-  { id: 'CNV-001', name: 'CNV-001' },
-  { id: 'CNV-002', name: 'CNV-002' },
-  { id: 'CNV-003', name: 'CNV-003' },
-]
+const allEquipment = ref([])
 
 const selectedUser = computed(
   () => users.find((u) => u.userId === selectedUserId.value) ?? users[0] ?? null,
@@ -136,8 +115,8 @@ const filteredUsers = computed(() => {
 
 const filteredEquipmentOptions = computed(() => {
   const q = equipSearch.value.trim().toLowerCase()
-  if (!q) return allEquipment
-  return allEquipment.filter((e) => e.name.toLowerCase().includes(q))
+  if (!q) return allEquipment.value
+  return allEquipment.value.filter((e) => e.name.toLowerCase().includes(q))
 })
 
 const isDetailEditable = computed(() => isAddingUser.value || isEditingUser.value)
@@ -148,7 +127,7 @@ const activeAssignedEquipIds = computed(() => {
 })
 
 const selectedEquipTags = computed(() =>
-  allEquipment.filter((e) => activeAssignedEquipIds.value.includes(e.id)),
+  allEquipment.value.filter((e) => activeAssignedEquipIds.value.includes(e.id)),
 )
 
 const selectedCount = computed(() => checkedUserIds.value.length)
@@ -177,7 +156,7 @@ const selectUser = async (userId) => {
     const user = users.find((u) => u.userId === userId)
     if (user) {
       user.assignedEquipIds = equips.map((e) => e.equipmentId)
-      user.equipment = equips.map((e) => e.equipmentName).join(', ')
+      user.equipment = equips.map((e) => e.equipmentId).join(', ')
     }
   } catch {
     // 설비 로드 실패 시 무시
@@ -243,7 +222,10 @@ const loadUsers = async (selectAfter = null) => {
   errorMsg.value = ''
   try {
     const apiUsers = await getUsers()
-    users.splice(0, users.length, ...apiUsers.map((u) => mapUserFromApi(u)))
+    const equipsList = await Promise.all(
+      apiUsers.map((u) => getUserEquipments(u.userId).catch(() => [])),
+    )
+    users.splice(0, users.length, ...apiUsers.map((u, i) => mapUserFromApi(u, equipsList[i])))
 
     const targetId = selectAfter ?? selectedUserId.value
     const stillExists = users.some((u) => u.userId === targetId)
@@ -303,6 +285,7 @@ const saveSelectedUser = async () => {
     }
     if (newUser.password.trim()) payload.password = newUser.password.trim()
     await apiUpdateUser(currentId, payload)
+    await assignEquipmentsBatch(currentId, newUser.assignedEquipIds)
     isEditingUser.value = false
     await loadUsers(currentId)
   } catch (e) {
@@ -310,6 +293,20 @@ const saveSelectedUser = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const showDeleteConfirm = ref(false)
+const pendingDeleteIds = ref([])
+
+const requestDelete = (ids) => {
+  if (ids.length === 0) return
+  pendingDeleteIds.value = ids
+  showDeleteConfirm.value = true
+}
+
+const cancelDelete = () => {
+  showDeleteConfirm.value = false
+  pendingDeleteIds.value = []
 }
 
 const deleteUsersByIds = async (ids) => {
@@ -327,13 +324,19 @@ const deleteUsersByIds = async (ids) => {
   }
 }
 
+const confirmDelete = async () => {
+  showDeleteConfirm.value = false
+  await deleteUsersByIds(pendingDeleteIds.value)
+  pendingDeleteIds.value = []
+}
+
 const deleteCheckedUsers = () => {
-  deleteUsersByIds([...checkedUserIds.value])
+  requestDelete([...checkedUserIds.value])
 }
 
 const deleteSelectedUser = () => {
   if (!selectedUser.value) return
-  deleteUsersByIds([selectedUser.value.userId])
+  requestDelete([selectedUser.value.userId])
 }
 
 const handleSave = () => {
@@ -352,7 +355,17 @@ const refreshUsers = () => {
   loadUsers()
 }
 
+const loadEquipmentNames = async () => {
+  try {
+    const names = await getEquipmentNames()
+    allEquipment.value = names.map((e) => ({ id: e.equipmentId, name: e.equipmentId }))
+  } catch {
+    // 설비 목록 로드 실패 시 빈 목록 유지
+  }
+}
+
 onMounted(() => {
+  loadEquipmentNames()
   loadUsers()
 })
 </script>
@@ -360,6 +373,17 @@ onMounted(() => {
 <template>
   <div class="permission-page">
     <AppTopbar active-menu="사용자 관리" />
+
+    <!-- 삭제 확인 모달 -->
+    <div v-if="showDeleteConfirm" class="confirm-overlay" @click.self="cancelDelete">
+      <div class="confirm-modal">
+        <p>정말 삭제하시겠습니까?</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn navy" @click="confirmDelete">네</button>
+          <button type="button" class="btn outline" @click="cancelDelete">아니오</button>
+        </div>
+      </div>
+    </div>
 
     <main class="content">
       <div class="main-layout">
@@ -376,13 +400,10 @@ onMounted(() => {
 
           <section class="panel table-panel">
           <div class="action-bar">
-            <div class="action-buttons">
-              <button type="button" class="btn primary" @click="startAddUser">+ 사용자 추가</button>
-              <button type="button" class="btn danger-outline" @click="deleteCheckedUsers">🗑 사용자 삭제</button>
-            </div>
+            <button type="button" class="btn danger-outline" @click="deleteCheckedUsers">🗑 선택항목 삭제</button>
             <label class="user-search">
               <span>⌕</span>
-              <input v-model="userSearch" type="search" placeholder="이름, 아이디, 역할, 담당 설비 검색" />
+              <input v-model="userSearch" type="search" placeholder="이름, 이메일, 역할, 담당 설비 검색" />
             </label>
             <button type="button" class="refresh-btn" title="새로고침" @click="refreshUsers">↻</button>
           </div>
@@ -427,7 +448,7 @@ onMounted(() => {
                   <td><span class="status-badge" :class="user.status">{{ user.statusLabel }}</span></td>
                   <td class="manage-cell" @click.stop>
                     <button type="button" class="icon-btn edit" title="수정" @click="editUser(user.userId)">✎</button>
-                    <button type="button" class="icon-btn delete" title="삭제" @click="deleteUsersByIds([user.userId])">🗑</button>
+                    <button type="button" class="icon-btn delete" title="삭제" @click="requestDelete([user.userId])">🗑</button>
                   </td>
                 </tr>
                 <tr v-if="filteredUsers.length === 0">
@@ -466,11 +487,11 @@ onMounted(() => {
             <dl v-if="isDetailEditable" class="profile-list form-list">
               <div>
                 <dt>이름</dt>
-                <dd><input v-model="newUser.name" type="text" placeholder="이름 입력" /></dd>
+                <dd><input v-model="newUser.name" type="text" placeholder="이름 입력" :disabled="isEditingUser && !isAddingUser" /></dd>
               </div>
               <div>
                 <dt>이메일</dt>
-                <dd><input v-model="newUser.email" type="email" placeholder="email@company.com" /></dd>
+                <dd><input v-model="newUser.email" type="email" placeholder="email@company.com" :disabled="isEditingUser && !isAddingUser" /></dd>
               </div>
               <div v-if="isAddingUser">
                 <dt>비밀번호</dt>
@@ -650,14 +671,8 @@ onMounted(() => {
   gap: 12px;
 }
 
-.action-buttons {
-  display: flex;
+.action-bar > .btn {
   flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.action-buttons .btn {
   min-width: 130px;
   height: 40px;
   padding: 0 18px;
@@ -1139,5 +1154,48 @@ onMounted(() => {
   .permission-page {
     min-width: 1200px;
   }
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 36, 72, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.confirm-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 32px 36px;
+  box-shadow: 0 8px 32px rgba(13, 36, 72, 0.18);
+  min-width: 260px;
+  text-align: center;
+}
+
+.confirm-modal p {
+  margin: 0 0 24px;
+  font-size: 16px;
+  font-weight: 900;
+  color: #0d2448;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.confirm-actions .btn {
+  min-width: 80px;
+  height: 38px;
+}
+
+.form-list input:disabled {
+  background: #f5f7fb;
+  color: #9aa8bc;
+  cursor: not-allowed;
 }
 </style>
