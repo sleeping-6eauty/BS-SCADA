@@ -122,77 +122,6 @@
             </div>
           </article>
 
-          <!-- Bar Chart -->
-          <article class="panel chart-panel compact">
-            <div class="panel-header">
-              <div>
-                <p class="panel-label">Equipment Frequency</p>
-                <h2>설비별 알람 발생 빈도</h2>
-              </div>
-
-              <div class="panel-actions single">
-                <select v-model.number="countDays">
-                  <option :value="7">최근 7일</option>
-                  <option :value="30">최근 30일</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="bar-chart-wrap">
-              <svg class="bar-chart" viewBox="0 0 900 210" preserveAspectRatio="none">
-                <g class="grid-lines">
-                  <line
-                    v-for="tick in barTicks"
-                    :key="tick"
-                    x1="35"
-                    x2="880"
-                    :y1="barY(tick)"
-                    :y2="barY(tick)"
-                  />
-                </g>
-
-                <g class="y-labels">
-                  <text
-                    v-for="tick in barTicks"
-                    :key="`bar-y-${tick}`"
-                    x="18"
-                    :y="barY(tick) + 4"
-                  >
-                    {{ tick }}
-                  </text>
-                </g>
-
-                <g v-for="(bar, index) in frequencyData" :key="bar.name">
-                  <rect
-                    class="bar-rect"
-                    :x="barX(index)"
-                    :y="barY(bar.value)"
-                    :width="barWidth"
-                    :height="barHeight(bar.value)"
-                    rx="8"
-                  />
-                  <text
-                    class="bar-value"
-                    :x="barX(index) + barWidth / 2"
-                    :y="barY(bar.value) - 10"
-                  >
-                    {{ bar.value }}
-                  </text>
-                  <text
-                    class="bar-label"
-                    :x="barX(index) + barWidth / 2"
-                    y="194"
-                  >
-                    {{ bar.name }}
-                  </text>
-                </g>
-                <text v-if="!frequencyData.length" class="empty-chart-text" x="450" y="106">
-                  설비별 알람 건수 데이터가 없습니다.
-                </text>
-              </svg>
-            </div>
-          </article>
-
           <!-- Table -->
           <article class="panel table-panel">
             <div class="panel-header table-title">
@@ -371,7 +300,7 @@ import {
   getAlarmLog,
   getAlarmLogsByEquipment,
   getAlarmStatistics,
-  getEquipmentAlarmCount,
+  getEquipments,
   getEquipmentNames,
   getMyEquipments,
   patchAlarmMemo,
@@ -379,7 +308,7 @@ import {
 
 const selectedEquipmentId = ref('')
 const trendPeriod = ref('day')
-const countDays = ref(7)
+const selectedFrequencyLine = ref('all')
 const selectedAlarmId = ref('')
 const selectedStatus = ref('')
 const memoInput = ref('')
@@ -416,6 +345,24 @@ const toNumericId = (value) => {
   return /^\d+$/.test(text) ? text : ''
 }
 
+const normalizeLineNo = (value) => {
+  if (value === undefined || value === null || value === '') return '미지정 라인'
+  const text = String(value).trim()
+  if (!text) return '미지정 라인'
+  if (/^line\s*\d+$/i.test(text)) {
+    return `Line ${text.match(/\d+/)?.[0] ?? text}`
+  }
+  if (/^\d+$/.test(text)) return `Line ${text}`
+  return text
+}
+
+const sortLineLabel = (a, b) => {
+  const aNo = Number(String(a).match(/\d+/)?.[0])
+  const bNo = Number(String(b).match(/\d+/)?.[0])
+  if (Number.isFinite(aNo) && Number.isFinite(bNo) && aNo !== bNo) return aNo - bNo
+  return String(a).localeCompare(String(b), 'ko-KR', { numeric: true })
+}
+
 const formatDateTime = (value) => {
   if (!value) return '-'
   const date = new Date(value)
@@ -437,24 +384,13 @@ const normalizeTrend = (payload) =>
     value: Number(pick(item, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
   }))
 
-const normalizeFrequency = (payload, fallbackId) => {
-  const rows = asArray(payload)
-  const source = rows.length ? rows : [payload]
-  return source
-    .filter(Boolean)
-    .map((item) => ({
-      id: String(pick(item, ['equipment_id', 'equipmentId', 'id'], fallbackId)),
-      name: String(pick(item, ['equipment_name', 'equipmentName', 'name', 'equipment_id', 'equipmentId'], fallbackId)),
-      value: Number(pick(item, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
-    }))
-}
-
 const normalizeEquipment = (item) => {
   const id = String(pick(item, ['equipment_id', 'equipmentId', 'id'], ''))
   const name = String(pick(item, ['equipment_name', 'equipmentName', 'name'], id || '-'))
   return {
     id,
     name,
+    lineNo: normalizeLineNo(pick(item, ['line_no', 'lineNo', 'line', 'location'], '')),
     icon: getEquipmentIcon(name || id),
   }
 }
@@ -497,6 +433,11 @@ const selectedEquipmentName = computed(() =>
     ?? selectedAlarm.value?.equipment
     ?? selectedEquipmentId.value
     ?? '-'
+)
+
+const lineOptions = computed(() =>
+  [...new Set(equipmentList.value.map((item) => item.lineNo).filter(Boolean))]
+    .sort(sortLineLabel)
 )
 
 const detailAlarm = computed(() => {
@@ -571,7 +512,7 @@ const loadTrend = async () => {
 
 const loadEquipmentLists = async () => {
   const [allEquipments, assignedEquipments] = await Promise.all([
-    getEquipmentNames(),
+    getEquipments().catch(() => getEquipmentNames()),
     getMyEquipments(),
   ])
   equipmentList.value = asArray(allEquipments).map(normalizeEquipment).filter((item) => item.id)
@@ -579,29 +520,28 @@ const loadEquipmentLists = async () => {
 }
 
 const loadCounts = async () => {
-  const targets = equipmentList.value.map((item) => [item.id, item.name])
-  const fallbackTargets = selectedEquipmentId.value ? [[selectedEquipmentId.value, selectedEquipmentName.value]] : []
-  const logTargets = [...new Map(
-    alarmRows.value
-      .filter((row) => row.equipmentId)
-      .map((row) => [row.equipmentId, row.equipment]),
-  )]
-  const equipmentTargets = targets.length ? targets : (logTargets.length ? logTargets : fallbackTargets)
-  if (!equipmentTargets.length) return
+  const payload = await getAlarmLog()
+  const allRows = asArray(payload).map(normalizeAlarmRow)
+  const countsByEquipment = allRows.reduce((counts, row) => {
+    if (!row.equipmentId) return counts
+    counts.set(row.equipmentId, (counts.get(row.equipmentId) ?? 0) + 1)
+    return counts
+  }, new Map())
 
-  const counts = await Promise.all(
-    equipmentTargets.map(async ([equipmentId, equipmentName]) => {
-      const payload = await getEquipmentAlarmCount(equipmentId, countDays.value)
-      const normalized = normalizeFrequency(payload, equipmentId)
-      const ownCount = normalized.find((row) => row.id === equipmentId) ?? normalized[0]
-      return {
-        id: equipmentId,
-        name: equipmentName || ownCount?.name || equipmentId,
-        value: Number(ownCount?.value ?? pick(payload, ['count', 'alarm_count', 'alarmCount', 'value'], 0)),
-      }
-    }),
-  )
-  frequencyData.value = counts
+  const equipmentTargets = equipmentList.value.length
+    ? equipmentList.value
+    : [...new Set(allRows.map((row) => row.equipmentId).filter(Boolean))]
+      .map((id) => ({ id, name: id, lineNo: '미지정 라인' }))
+
+  frequencyData.value = equipmentTargets
+    .filter((item) => selectedFrequencyLine.value === 'all' || item.lineNo === selectedFrequencyLine.value)
+    .map((item) => ({
+      id: item.id,
+      name: item.name || item.id,
+      lineNo: item.lineNo,
+      value: countsByEquipment.get(item.id) ?? 0,
+    }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'ko-KR', { numeric: true }))
 }
 
 const loadLogs = async () => {
@@ -662,7 +602,7 @@ const addMemo = async () => {
 }
 
 watch(trendPeriod, loadTrend)
-watch(countDays, loadCounts)
+watch(selectedFrequencyLine, loadCounts)
 watch(selectedEquipmentId, async () => {
   await Promise.all([loadLogs(), loadCounts(), loadDetail()])
 })
