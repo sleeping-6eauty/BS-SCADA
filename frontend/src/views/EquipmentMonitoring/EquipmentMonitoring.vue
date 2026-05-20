@@ -32,10 +32,10 @@
             </div>
 
             <div class="legend-wrap">
-              <span class="legend running"></span> 가동 (Running)
-              <span class="legend idle"></span> 대기 (Idle)
-              <span class="legend stop"></span> 정지 (Stop)
-              <span class="legend unknown"></span> 알 수 없음 (Unknown)
+              <span class="legend running"></span> 가동 (RUN)
+              <span class="legend idle"></span> 대기 (IDLE)
+              <span class="legend stop"></span> 정지 (STOP)
+              <span class="legend alarm"></span> 알람 (ALARM)
             </div>
           </div>
 
@@ -79,7 +79,7 @@
                     :aria-label="`${line.label} ${line.conveyor.label} 상세 보기`"
                     @click="selectLayoutStation(line.conveyor)"
                   >
-                    <span>{{ line.conveyor.label }}</span>
+                    <span>{{ line.conveyor.equipment_id }}</span>
                     <div class="conveyor-track">
                       <i v-for="index in 4" :key="index"></i>
                     </div>
@@ -167,24 +167,38 @@
             <dl class="info-list">
               <div><dt>제조사</dt><dd>{{ currentEquipmentDetail.manufacturer ?? '-' }}</dd></div>
               <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
-              <div><dt>설비 위치</dt><dd>{{ currentEquipmentDetail.zone }} - {{ currentEquipmentDetail.line_no }}</dd></div>
+              <div><dt>설비 위치</dt><dd>{{ currentEquipmentLocation }}</dd></div>
               <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
-              <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
+              <div><dt>마지막 업데이트</dt><dd>{{ currentEquipmentLastUpdate }}</dd></div>
             </dl>
 
-            <div v-if="isConveyorSelected" class="inverter-control">
+            <div v-if="isConveyorSelected" class="inverter-control" :class="{ locked: !isConveyorControlSupported }">
               <div class="control-header">
                 <h4>인버터 제어</h4>
-                <span>API 미연결</span>
+                <span>{{ controlStatusText }}</span>
               </div>
               <div class="control-grid">
-                <div class="control-box">
+                <div class="control-box frequency-control">
                   <span>주파수</span>
-                  <strong>{{ currentConveyorControl.frequency }} Hz</strong>
-                  <div class="control-actions">
-                    <button type="button" @click="adjustConveyorFrequency(-5)">-5</button>
-                    <button type="button" @click="adjustConveyorFrequency(5)">+5</button>
+                  <div class="frequency-input-row">
+                    <input
+                      v-model.number="frequencyDraft"
+                      type="number"
+                      min="0"
+                      step="1"
+                      aria-label="컨베이어 주파수"
+                      :disabled="!isConveyorControlSupported"
+                    />
+                    <strong>Hz</strong>
                   </div>
+                  <button
+                    type="button"
+                    class="confirm-button"
+                    :disabled="!isConveyorControlSupported"
+                    @click="confirmConveyorFrequency"
+                  >
+                    확인
+                  </button>
                 </div>
                 <div class="control-box">
                   <span>회전 여부</span>
@@ -192,7 +206,8 @@
                     type="button"
                     class="state-button"
                     :class="{ active: currentConveyorControl.rotating }"
-                    @click="setConveyorRotation(true)"
+                    :disabled="!isConveyorControlSupported"
+                    @click="turnOnConveyor"
                   >
                     {{ currentConveyorControl.rotating ? '회전 중' : '회전 시작' }}
                   </button>
@@ -203,7 +218,8 @@
                     type="button"
                     class="state-button stop"
                     :class="{ active: currentConveyorControl.stopped }"
-                    @click="setConveyorRotation(false)"
+                    :disabled="!isConveyorControlSupported"
+                    @click="turnOffConveyor"
                   >
                     {{ currentConveyorControl.stopped ? '정지 중' : '정지' }}
                   </button>
@@ -213,29 +229,9 @@
 
             <h4 class="sub-title">주요 데이터</h4>
             <div class="metrics-grid">
-              <div class="metric-box">
-                <span>가동 상태</span>
-                <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>가동 시간</span>
-                <strong>{{ runningTime }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor1" class="metric-box">
-                <span>{{ currentSensorData.sensor1.label }}</span>
-                <strong>{{ currentSensorData.sensor1.value.toFixed(1) }} {{ currentSensorData.sensor1.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor2" class="metric-box">
-                <span>{{ currentSensorData.sensor2.label }}</span>
-                <strong>{{ currentSensorData.sensor2.value.toFixed(1) }} {{ currentSensorData.sensor2.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor3" class="metric-box">
-                <span>{{ currentSensorData.sensor3.label }}</span>
-                <strong>{{ currentSensorData.sensor3.value.toFixed(1) }} {{ currentSensorData.sensor3.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor4" class="metric-box">
-                <span>{{ currentSensorData.sensor4.label }}</span>
-                <strong>{{ currentSensorData.sensor4.value.toFixed(0) }} {{ currentSensorData.sensor4.unit }}</strong>
+              <div v-for="metric in currentMetricCards" :key="metric.key" class="metric-box">
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.valueText }}</strong>
               </div>
             </div>
           </section>
@@ -246,7 +242,7 @@
               <button type="button" @click="goToAlarmPage">더보기 ›</button>
             </div>
             <ul class="recent-alarm-list">
-              <li v-for="alarm in recentAlarms" :key="alarm.id">
+              <li v-for="alarm in selectedRecentAlarms" :key="alarm.id">
                 <span class="alarm-mark" :class="alarm.level">!</span>
                 <div>
                   <strong>{{ alarm.title }}</strong>
@@ -254,6 +250,7 @@
                 </div>
                 <em :class="alarm.level">{{ alarm.label }}</em>
               </li>
+              <li v-if="selectedRecentAlarms.length === 0" class="empty-alarm-row">수신된 알람이 없습니다.</li>
             </ul>
           </section>
         </template>
@@ -263,21 +260,37 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import mqtt from 'mqtt'
 import { fetchEquipments, fetchLatestLog, fetchEquipmentRunningTime } from '../../api/mockEquipmentApi'
 import AppTopbar from '@/components/AppTopbar.vue'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 const router = useRouter()
 const activeView = ref('layout')
 const equipmentSearch = ref('')
 const currentPage = ref(1)
 const rowsPerPage = 10
 
+const defaultBrokerUrl = (() => {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return 'wss://broker.mqttdashboard.com:8884/mqtt'
+  }
+  return 'ws://broker.mqttdashboard.com:8000/mqtt'
+})()
+
+const rawBrokerUrl = import.meta.env.VITE_MQTT_BROKER_URL ?? import.meta.env.VITE_MQTT_URL ?? defaultBrokerUrl
+const mqttRealtimeTopic = import.meta.env.VITE_MQTT_TOPIC ?? 'factory/equipment/+/realtime'
+const mqttAlarmTopic = import.meta.env.VITE_MQTT_ALARM_TOPIC ?? 'factory/equipment/+/alarm'
+const mqttUsername = import.meta.env.VITE_MQTT_USERNAME
+const mqttPassword = import.meta.env.VITE_MQTT_PASSWORD
+
 const statusText = {
   running: '가동',
   idle: '대기',
   stop: '정지',
+  alarm: '알람',
   unknown: '알 수 없음',
 }
 
@@ -287,16 +300,13 @@ const alarmText = {
   danger: '위험',
 }
 
-const recentAlarms = [
-  { id: 'alarm-1', title: '토크 이상 감지', time: '2024-05-24 10:15:32', level: 'warning', label: '경고' },
-  { id: 'alarm-2', title: '오버 과열', time: '2024-05-24 09:28:16', level: 'danger', label: '위험' },
-  { id: 'alarm-3', title: '통신 지연', time: '2024-05-24 09:13:07', level: 'warning', label: '경고' },
-]
+const recentAlarms = ref([])
 
 const layoutStatusText = {
   running: '가동',
   idle: '대기',
   stop: '정지',
+  alarm: '알람',
   unknown: '알 수 없음',
 }
 
@@ -334,14 +344,19 @@ const equipmentTypeIcons = {
 }
 
 const monitoringEquipmentTypes = [
-  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'Daifuku' },
-  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'Hyundai Wia' },
-  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'ABB' },
-  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'Nachi' },
-  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Nordson' },
-  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'Keyence' },
-  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'BS-SCADA' },
+  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'SCHMALZ' },
+  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'MISUMI' },
+  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'Hi6-N00' },
+  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'ARO' },
+  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Durr' },
+  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'VITRONIC' },
+  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'Hyundai Rotem' },
 ]
+
+const monitoringEquipmentTypeByCode = monitoringEquipmentTypes.reduce((map, item) => {
+  map[item.code] = item
+  return map
+}, {})
 
 const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeIndex) =>
   [1, 2, 3].map((sequence, sequenceIndex) => ({
@@ -363,18 +378,24 @@ const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeI
 
 const formatEquipmentId = (code, lineNo) => `${code}-${String(lineNo).padStart(3, '0')}`
 
-const createStation = (lineNo, type, zone, status) => ({
-  id: formatEquipmentId(type.toUpperCase(), lineNo),
-  label: formatEquipmentId(type.toUpperCase(), lineNo),
-  type,
-  status: status ?? 'running',
-  zone,
-  line: `Line ${lineNo}`,
-  manufacturer: 'BS-SCADA',
-  equipment_id: formatEquipmentId(type.toUpperCase(), lineNo),
-  equipment_name: formatEquipmentId(type.toUpperCase(), lineNo),
-  line_no: `Line ${lineNo}`,
-})
+const createStation = (lineNo, type, zone, status) => {
+  const code = type.toUpperCase()
+  const meta = monitoringEquipmentTypeByCode[code] ?? {}
+  const equipmentId = formatEquipmentId(code, lineNo)
+
+  return {
+    id: equipmentId,
+    label: equipmentId,
+    type,
+    status: status ?? 'running',
+    zone,
+    line: `Line ${lineNo}`,
+    manufacturer: meta.manufacturer ?? 'BS-SCADA',
+    equipment_id: equipmentId,
+    equipment_name: equipmentId,
+    line_no: `Line ${lineNo}`,
+  }
+}
 
 const createConveyorStation = (lineNo, status = 'running') => ({
   id: formatEquipmentId('CNV', lineNo),
@@ -383,7 +404,7 @@ const createConveyorStation = (lineNo, status = 'running') => ({
   status,
   zone: 'Line Conveyor',
   line: `Line ${lineNo}`,
-  manufacturer: 'BS-SCADA',
+  manufacturer: monitoringEquipmentTypeByCode.CNV?.manufacturer ?? 'BS-SCADA',
   equipment_id: formatEquipmentId('CNV', lineNo),
   equipment_name: formatEquipmentId('CNV', lineNo),
   line_no: `Line ${lineNo}`,
@@ -409,30 +430,133 @@ const conveyorControls = reactive({
   'CNV-002': { frequency: 35, rotating: false, stopped: true },
   'CNV-003': { frequency: 40, rotating: true, stopped: false },
 })
+const frequencyDraft = ref(0)
+const controlStatusText = ref('상태 확인 전')
+
+const statusCodeMap = {
+  RUN: 'running',
+  RUNNING: 'running',
+  IDLE: 'idle',
+  WAIT: 'idle',
+  STOP: 'stop',
+  STOPPED: 'stop',
+  ALARM: 'alarm',
+  UNKNOWN: 'unknown',
+}
+
+const realtimeEquipmentData = reactive({})
+let mqttClient = null
+
+const authHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
+  const controller = new AbortController()
+  const tid = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(tid)
+  }
+}
+
+const safeParseJson = async (res) => {
+  try { return await res.json() } catch { return null }
+}
+
+const parsePayload = (buffer) => {
+  try {
+    const parsed = JSON.parse(buffer.toString())
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const parseTopicEquipmentId = (topic, suffix) => {
+  const match = new RegExp(`^factory/equipment/([^/]+)/${suffix}$`, 'i').exec(topic ?? '')
+  return match?.[1] ?? ''
+}
+
+const resolveBrokerUrlForBrowser = (rawUrl) => {
+  const value = String(rawUrl ?? '').trim()
+  if (!value) return defaultBrokerUrl
+
+  const normalizeHost = (hostname) => {
+    const lower = String(hostname ?? '').toLowerCase()
+    if (lower === 'mqtt-dashboard.com') return 'broker.mqttdashboard.com'
+    if (lower === 'broker.mqtt-dashboard.com') return 'broker.mqttdashboard.com'
+    return hostname
+  }
+
+  if (/^(wss?|mqtts?):\/\//i.test(value)) {
+    const source = new URL(value)
+    const protocol = source.protocol.toLowerCase()
+    const isSecure = protocol === 'wss:' || protocol === 'mqtts:'
+    source.hostname = normalizeHost(source.hostname)
+    source.protocol = isSecure ? 'wss:' : 'ws:'
+    if (!source.port) source.port = isSecure ? '8884' : '8000'
+    if (!isSecure && source.port === '1883') source.port = '8000'
+    if (isSecure && source.port === '8883') source.port = '8884'
+    if (!source.pathname || source.pathname === '/') source.pathname = '/mqtt'
+    return source.href
+  }
+
+  const normalizedInput = value
+    .replace(/^mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+    .replace(/^broker\.mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+  const url = new URL(`ws://${normalizedInput}`)
+  if (!url.port || url.port === '1883') url.port = '8000'
+  if (!url.pathname || url.pathname === '/') url.pathname = '/mqtt'
+  return url.href
+}
 
 // 설비 유형별 센서 데이터 라벨
 const getSensorDisplayLabels = (type) => {
-  if (type === 'robot' || type === 'rob') {
+  if (type === 'cnv') {
     return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
-    }
-  } else if (type === 'nutrunner') {
-    return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_ac', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_ac', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'cycle_time', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '모터 내부 온도(℃)', key: 'motor_temperature_c', decimals: 1 },
+      sensor2: { label: '모터 전류(A)', key: ['motor_current_c', 'motor_current_a', 'motorCurrentA'], decimals: 1 },
+      sensor3: { label: '이동 속도(m/s)', key: 'moving_speed_m_s', decimals: 2 },
     }
   }
-  if (['plf', 'jig', 'wld', 'slr', 'vsi'].includes(type)) {
+  if (type === 'plf') {
     return {
-      sensor1: { label: '현재 온도', key: 'weld_voltage_dc', unit: '℃' },
-      sensor2: { label: '전류', key: 'weld_current_dc', unit: 'A' },
-      sensor3: { label: '사이클 타임', key: 'weld_speed', unit: 's' },
-      sensor4: { label: '생산 수량', key: 'production_count', unit: 'EA' },
+      sensor1: { label: '모터 전류(A)', key: ['moter_current_a', 'motor_current_a', 'motorCurrentA'], decimals: 1 },
+      sensor2: { label: '진공 압력(kPa)', key: ['vaccum_pressure_kpa', 'vacuum_pressure_kpa', 'vacuumPressureKpa'], decimals: 1 },
+      sensor3: { label: '위치 오차(mm)', key: 'position_error_mm', decimals: 2 },
+    }
+  }
+  if (type === 'jig') {
+    return {
+      sensor1: { label: '클램프 압력(bar)', key: 'clamp_pressure_bar', decimals: 2 },
+      sensor2: { label: '공압 압력(bar)', key: ['pneumatic_press_bar', 'pneumatic_pressure_bar', 'pneumaticPressureBar'], decimals: 2 },
+      sensor3: { label: '클램프 위치(mm)', key: 'clamp_position_mm', decimals: 1 },
+    }
+  }
+  if (type === 'robot' || type === 'rob') {
+    return {
+      sensor1: { label: '로봇 스위블(deg)', key: 'robot_swivel', decimals: 1 },
+      sensor2: { label: '로봇 수평축(mm)', key: 'robot_horizontal', decimals: 1 },
+      sensor3: { label: '로봇 수직축(mm)', key: 'robot_vertical', decimals: 1 },
+      sensor4: { label: '툴 오프셋 오차(mm)', key: ['tool_offset_er', 'tool_offset_error_mm', 'toolOffsetErrorMm'], decimals: 2 },
+    }
+  }
+  if (type === 'wld') {
+    return {
+      sensor1: { label: '용접 전압 DC(V)', key: 'weld_voltage_dc', decimals: 1 },
+      sensor2: { label: '용접 전류 DC(A)', key: 'weld_current_dc', decimals: 1 },
+      sensor3: { label: '용접 전류 AC(A)', key: 'weld_current_ac', decimals: 1 },
+      sensor4: { label: '용접 속도(mm/s)', key: 'weld_speed', decimals: 1 },
+    }
+  }
+  if (type === 'slr') {
+    return {
+      sensor1: { label: '토출 압력(bar)', key: 'dispense_pressure_bar', decimals: 2 },
+      sensor2: { label: '실러 온도(℃)', key: 'sealer_temperature_c', decimals: 1 },
+      sensor3: { label: '유량(ml/s)', key: 'flow_rate_ml_s', decimals: 2 },
     }
   }
   return {}
@@ -464,6 +588,7 @@ const setActiveView = (view) => {
 }
 
 const selectLayoutStation = (station) => {
+  const meta = getEquipmentMeta(station.equipment_id ?? station.id)
   selectedEquipment.value = {
     id: station.id,
     name: station.label,
@@ -472,7 +597,7 @@ const selectLayoutStation = (station) => {
     zone: station.zone,
     line: station.line,
     layoutType: station.type,
-    manufacturer: station.manufacturer,
+    manufacturer: station.manufacturer ?? meta.manufacturer,
     equipment_id: station.equipment_id,
     equipment_name: station.equipment_name,
     line_no: station.line_no,
@@ -496,32 +621,139 @@ const selectEquipmentRow = (row) => {
 }
 
 const goToEquipmentDetail = () => {
-  router.push('/equipment-detail')
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  router.push({ name: 'equipment-detail', query: id ? { id } : {} })
 }
 
 const goToAlarmPage = () => {
-  router.push('/equipment-alarm')
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  router.push({ name: 'equipment-alarm', query: id ? { equipmentId: id } : {} })
 }
 
 const isConveyorSelected = computed(() => selectedEquipment.value?.layoutType === 'cnv')
+const isConveyorControlSupported = computed(() => selectedEquipment.value?.id === 'CNV-001')
 
 const currentConveyorControl = computed(() => {
   const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
   return conveyorControls[id] ?? { frequency: 0, rotating: false, stopped: true }
 })
 
-const adjustConveyorFrequency = (amount) => {
+const confirmConveyorFrequency = () => {
   const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
   if (!id || !conveyorControls[id]) return
-  const nextFrequency = conveyorControls[id].frequency + amount
-  conveyorControls[id].frequency = Math.min(Math.max(nextFrequency, 0), 60)
+  if (!isConveyorControlSupported.value) {
+    controlStatusText.value = 'CNV-001만 제어 가능'
+    return
+  }
+
+  const nextFrequency = Number(frequencyDraft.value)
+  if (!Number.isFinite(nextFrequency)) return
+  conveyorControls[id].frequency = Math.max(nextFrequency, 0)
 }
 
-const setConveyorRotation = (rotating) => {
-  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+const setConveyorRotationState = (id, rotating) => {
   if (!id || !conveyorControls[id]) return
   conveyorControls[id].rotating = rotating
   conveyorControls[id].stopped = !rotating
+}
+
+const applyControlStatus = (equipmentId, data) => {
+  if (!equipmentId || !conveyorControls[equipmentId] || !data) return
+  const status = String(data.currentStatus ?? '').toUpperCase()
+  const lastFrequency = Number(data.lastFrequency)
+
+  setConveyorRotationState(equipmentId, status === 'RUN')
+  if (Number.isFinite(lastFrequency)) {
+    conveyorControls[equipmentId].frequency = lastFrequency
+    if (selectedEquipment.value?.id === equipmentId) frequencyDraft.value = lastFrequency
+  }
+}
+
+const fetchConveyorControlStatus = async (equipmentId) => {
+  if (!equipmentId || !conveyorControls[equipmentId]) return
+  if (equipmentId !== 'CNV-001') {
+    controlStatusText.value = 'CNV-001만 제어 가능'
+    return
+  }
+
+  try {
+    controlStatusText.value = '상태 확인 중'
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(equipmentId)}/control/status`,
+      { headers: authHeaders() },
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
+
+    // success 필드 없어도 data가 있으면 적용 (Node-RED 응답 포맷 유연 처리)
+    const data = body?.data ?? body
+    if (data) applyControlStatus(equipmentId, data)
+    controlStatusText.value = 'API 연결'
+  } catch (err) {
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃' : '백엔드 연결 실패'
+    console.warn('Failed to fetch conveyor control status:', err)
+  }
+}
+
+const turnOnConveyor = async () => {
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  if (!id || !conveyorControls[id]) return
+  if (!isConveyorControlSupported.value) {
+    controlStatusText.value = 'CNV-001만 제어 가능'
+    return
+  }
+
+  confirmConveyorFrequency()
+  // 낙관적 업데이트: API 응답과 무관하게 즉시 UI 반영
+  setConveyorRotationState(id, true)
+  controlStatusText.value = '회전 명령 전송 중'
+
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/on`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ frequency: conveyorControls[id].frequency }),
+      },
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
+    controlStatusText.value = '회전 명령 완료'
+  } catch (err) {
+    // 타임아웃이나 네트워크 에러여도 Node-RED가 이미 명령을 받았을 수 있으므로 로컬 상태 유지
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '회전 명령 실패 (로컬 적용)'
+    console.warn('Failed to turn on conveyor:', err)
+  }
+}
+
+const turnOffConveyor = async () => {
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  if (!id || !conveyorControls[id]) return
+  if (!isConveyorControlSupported.value) {
+    controlStatusText.value = 'CNV-001만 제어 가능'
+    return
+  }
+
+  // 낙관적 업데이트
+  setConveyorRotationState(id, false)
+  controlStatusText.value = '정지 명령 전송 중'
+
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/off`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
+    controlStatusText.value = '정지 명령 완료'
+  } catch (err) {
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '정지 명령 실패 (로컬 적용)'
+    console.warn('Failed to turn off conveyor:', err)
+  }
 }
 
 // 설비별 최신 로그 데이터 캐시
@@ -531,24 +763,199 @@ const shouldApplyLogStatus = (logData) => {
   return logData?.status && logData.status !== 'unknown'
 }
 
+const normalizeStatus = (status) => {
+  const normalizedStatus = String(status ?? '').trim().toUpperCase()
+  return statusCodeMap[normalizedStatus] ?? String(status ?? 'unknown').toLowerCase()
+}
+
+const normalizeLineNo = (lineNo) => {
+  const value = String(lineNo ?? '').trim()
+  if (!value) return ''
+  if (/^line\s*/i.test(value)) return value.replace(/\s+/g, '')
+  return `Line${value}`
+}
+
+const formatEquipmentLocation = (lineNo, zone) => {
+  const line = normalizeLineNo(lineNo)
+  const normalizedZone = String(zone ?? '').trim().replace(/\s+/g, '')
+  return [line, normalizedZone].filter(Boolean).join(' - ') || '-'
+}
+
+const getEquipmentCode = (equipmentId) => String(equipmentId ?? '').split('-')[0]?.toUpperCase() ?? ''
+
+const getEquipmentMeta = (equipmentId) => monitoringEquipmentTypeByCode[getEquipmentCode(equipmentId)] ?? {}
+
+const getRealtimeData = (equipmentId) => realtimeEquipmentData[equipmentId] ?? equipmentLogCache[equipmentId]
+
+const formatRunSeconds = (seconds) => {
+  const totalSeconds = Number(seconds)
+  if (!Number.isFinite(totalSeconds)) return null
+
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds))
+  const hours = Math.floor(safeSeconds / 3600)
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+  const remainSeconds = safeSeconds % 60
+  return [hours, minutes, remainSeconds].map((unit) => String(unit).padStart(2, '0')).join(':')
+}
+
+const getRunningTimeText = (equipmentId, fallback = '00:00:00') => {
+  const realtimeData = getRealtimeData(equipmentId)
+  return formatRunSeconds(realtimeData?.accumulated_run_hours) ?? fallback
+}
+
+const getLocationForEquipment = (equipmentId, lineNo, zone) => {
+  const meta = getEquipmentMeta(equipmentId)
+  if (meta.type === 'cnv') return normalizeLineNo(lineNo) || '-'
+  return formatEquipmentLocation(lineNo, zone ?? meta.zone)
+}
+
+const applyRealtimePayload = (payload) => {
+  const equipmentId = String(payload?.equipment_id ?? '').trim()
+  if (!equipmentId) return
+
+  const meta = getEquipmentMeta(equipmentId)
+  const realtimeData = {
+    ...payload,
+    equipment_id: equipmentId,
+    equipment_name: payload.equipment_name ?? meta.label ?? equipmentId,
+    manufacturer: payload.manufacturer ?? meta.manufacturer ?? 'BS-SCADA',
+    zone: payload.zone ?? meta.zone,
+    type: payload.type ?? meta.type,
+    status: normalizeStatus(payload.status),
+  }
+
+  realtimeEquipmentData[equipmentId] = realtimeData
+  equipmentLogCache[equipmentId] = realtimeData
+
+  const station = productionLines
+    .flatMap((line) => [line.conveyor, ...line.stations])
+    .find((item) => item.id === equipmentId)
+
+  if (station) {
+    station.status = realtimeData.status
+    station.manufacturer = realtimeData.manufacturer
+    station.equipment_name = realtimeData.equipment_name
+    station.line_no = normalizeLineNo(realtimeData.line_no) || station.line_no
+    station.zone = realtimeData.zone ?? station.zone
+  }
+
+  if (selectedEquipment.value?.id === equipmentId) {
+    selectedEquipment.value = {
+      ...selectedEquipment.value,
+      status: realtimeData.status,
+      manufacturer: realtimeData.manufacturer,
+      zone: realtimeData.zone ?? selectedEquipment.value.zone,
+      line_no: normalizeLineNo(realtimeData.line_no) || selectedEquipment.value.line_no,
+      equipment_name: realtimeData.equipment_name,
+    }
+    latestLog.data = realtimeData
+    runningTime.value = getRunningTimeText(equipmentId, runningTime.value)
+  }
+}
+
+const alarmLevelMap = {
+  NORMAL: 'normal',
+  WARN: 'warning',
+  WARNING: 'warning',
+  DANGER: 'danger',
+  ALARM: 'danger',
+  CRITICAL: 'danger',
+}
+
+const alarmLabelMap = {
+  normal: '정상',
+  warning: '경고',
+  danger: '위험',
+}
+
+const normalizeAlarmLevel = (status) => {
+  return alarmLevelMap[String(status ?? '').trim().toUpperCase()] ?? 'warning'
+}
+
+const isFullEquipmentId = (id) => /^[A-Z]+-\d{3}$/i.test(id)
+
+const applyAlarmPayload = (payload, topic) => {
+  const rawId = String(payload?.equipment_id ?? '').trim()
+  const topicId = parseTopicEquipmentId(topic, 'alarm')
+  // CODE-NNN 형식(예: CNV-001)인 ID를 우선 사용 — prefix만 있는 ID는 무시하여 오필터링 방지
+  const equipmentId = isFullEquipmentId(rawId) ? rawId
+    : isFullEquipmentId(topicId) ? topicId
+    : (rawId || topicId)
+  if (!equipmentId || !isFullEquipmentId(equipmentId)) return
+
+  const level = normalizeAlarmLevel(payload.alarm_status)
+  const nextAlarm = {
+    id: `${equipmentId}-${payload.timestamp ?? Date.now()}-${payload.alarm_type ?? 'alarm'}`,
+    equipmentId,
+    title: payload.alarm_type ?? '-',
+    time: payload.timestamp ?? '-',
+    level,
+    label: alarmLabelMap[level] ?? payload.alarm_status ?? '-',
+  }
+
+  recentAlarms.value = [
+    nextAlarm,
+    ...recentAlarms.value.filter((alarm) => alarm.id !== nextAlarm.id),
+  ].slice(0, 50)
+}
+
+const handleMqttMessage = (topic, message) => {
+  const payload = parsePayload(message)
+  if (!payload) return
+
+  if (/\/alarm$/i.test(topic ?? '')) {
+    applyAlarmPayload(payload, topic)
+    return
+  }
+
+  if (/\/realtime$/i.test(topic ?? '')) {
+    applyRealtimePayload({
+      ...payload,
+      equipment_id: payload.equipment_id ?? parseTopicEquipmentId(topic, 'realtime'),
+    })
+  }
+}
+
+const connectMqtt = () => {
+  mqttClient = mqtt.connect(resolveBrokerUrlForBrowser(rawBrokerUrl), {
+    clientId: `bs-scada-equipment-${Math.random().toString(16).slice(2, 10)}`,
+    username: mqttUsername,
+    password: mqttPassword,
+    reconnectPeriod: 3000,
+    connectTimeout: 10000,
+    clean: true,
+  })
+
+  mqttClient.on('connect', () => {
+    mqttClient.subscribe([mqttRealtimeTopic, mqttAlarmTopic], { qos: 0 }, (err) => {
+      if (err) console.warn('Failed to subscribe equipment MQTT topics:', err)
+    })
+  })
+
+  mqttClient.on('message', handleMqttMessage)
+  mqttClient.on('error', (err) => {
+    console.warn('Equipment realtime MQTT connection error:', err)
+  })
+}
+
 // 테이블 데이터
 const equipmentRows = computed(() => {
   return monitoringEquipmentCatalog.map((eq) => {
-    const cachedLog = equipmentLogCache[eq.id]
+    const cachedLog = getRealtimeData(eq.id)
     const status = shouldApplyLogStatus(cachedLog) ? cachedLog.status : eq.status
 
     return {
       id: eq.id,
       name: eq.name,
-      line: eq.line,
-      lineNo: eq.lineNo,
-      zone: eq.zone,
+      line: getLocationForEquipment(eq.id, cachedLog?.line_no ?? eq.lineNo, cachedLog?.zone ?? eq.zone),
+      lineNo: normalizeLineNo(cachedLog?.line_no ?? eq.lineNo),
+      zone: cachedLog?.zone ?? eq.zone,
       rawType: eq.rawType,
-      typeName: eq.typeName,
-      manufacturer: eq.manufacturer,
+      typeName: cachedLog?.equipment_name ?? eq.typeName,
+      manufacturer: cachedLog?.manufacturer ?? eq.manufacturer,
       status: status,
-      alarm: status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
-      runningTime: eq.runningTime,
+      alarm: status === 'alarm' || status === 'stop' ? 'danger' : status === 'idle' ? 'warning' : 'normal',
+      runningTime: getRunningTimeText(eq.id, eq.runningTime),
       updatedAt: cachedLog?.timestamp || '2024-05-24 10:30:45'
     }
   })
@@ -585,6 +992,8 @@ watch(totalPages, (nextTotalPages) => {
 
 // 초기 데이터 로드
 onMounted(async () => {
+  connectMqtt()
+
   try {
     equipment.loading = true
     const equipmentsData = await fetchEquipments()
@@ -622,15 +1031,30 @@ onMounted(async () => {
 // 선택 설비가 바뀌면 로그 데이터 로드
 watch(selectedEquipment, async (newEquipment) => {
   if (!newEquipment || !newEquipment.id) return
+
+  if (newEquipment.layoutType === 'cnv') {
+    const control = conveyorControls[newEquipment.id]
+    frequencyDraft.value = control?.frequency ?? 0
+    fetchConveyorControlStatus(newEquipment.id)
+  }
   
   try {
     latestLog.loading = true
+
+    const realtimeData = getRealtimeData(newEquipment.id)
+    if (realtimeData) {
+      latestLog.data = realtimeData
+      runningTime.value = getRunningTimeText(newEquipment.id, runningTime.value)
+      return
+    }
     
     // 최신 로그 데이터 로드
     const logData = await fetchLatestLog(newEquipment.id)
-    latestLog.data = logData
     if (shouldApplyLogStatus(logData)) {
+      latestLog.data = logData
       equipmentLogCache[newEquipment.id] = logData
+    } else {
+      latestLog.data = null
     }
     
     // 가동 시간 로드
@@ -651,22 +1075,59 @@ watch(selectedEquipment, async (newEquipment) => {
   }
 }, { immediate: true })
 
+onBeforeUnmount(() => {
+  if (!mqttClient) return
+  mqttClient.end(true)
+  mqttClient = null
+})
+
 // 현재 설비의 상세 정보
 const currentEquipmentDetail = computed(() => {
   if (!selectedEquipment.value) return {}
   
   const equipDetail = equipment.list.find(eq => eq.equipment_id === selectedEquipment.value.id)
-  return equipDetail || {
+  const realtimeData = getRealtimeData(selectedEquipment.value.id) ?? {}
+  const meta = getEquipmentMeta(selectedEquipment.value.id)
+  const selectedManufacturer = selectedEquipment.value.manufacturer
+  const manufacturer = realtimeData.manufacturer
+    ?? (selectedManufacturer === 'BS-SCADA' && meta.manufacturer ? meta.manufacturer : selectedManufacturer)
+    ?? meta.manufacturer
+    ?? 'BS-SCADA'
+
+  return {
+    ...(equipDetail || {}),
+    ...realtimeData,
     equipment_id: selectedEquipment.value.equipment_id ?? selectedEquipment.value.id,
-    equipment_name: selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
-    manufacturer: selectedEquipment.value.manufacturer ?? 'BS-SCADA',
-    zone: selectedEquipment.value.zone,
-    line_no: selectedEquipment.value.line_no ?? selectedEquipment.value.line,
-    type: selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
+    equipment_name: realtimeData.equipment_name ?? selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
+    manufacturer,
+    zone: realtimeData.zone ?? selectedEquipment.value.zone,
+    line_no: normalizeLineNo(realtimeData.line_no ?? selectedEquipment.value.line_no ?? selectedEquipment.value.line),
+    type: realtimeData.type ?? selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
   }
 })
 
+const currentEquipmentLocation = computed(() => {
+  return getLocationForEquipment(
+    currentEquipmentDetail.value.equipment_id,
+    currentEquipmentDetail.value.line_no,
+    currentEquipmentDetail.value.zone,
+  )
+})
+
+const currentEquipmentLastUpdate = computed(() => {
+  return latestLog.data?.timestamp ?? getRealtimeData(selectedEquipment.value?.id)?.timestamp ?? '-'
+})
+
+const selectedRecentAlarms = computed(() => {
+  const selectedId = selectedEquipment.value?.id
+  if (!selectedId) return []
+  return recentAlarms.value.filter((alarm) => alarm.equipmentId === selectedId).slice(0, 3)
+})
+
 const selectedEquipmentTypeLabel = computed(() => {
+  const realtimeTypeName = getRealtimeData(selectedEquipment.value?.id)?.equipment_name
+  if (realtimeTypeName) return realtimeTypeName
+
   const type = currentEquipmentDetail.value.type ?? selectedEquipment.value?.layoutType ?? selectedEquipment.value?.type
   return equipmentTypeLabels[type] ?? equipmentTypeLabels[selectedEquipment.value?.type] ?? '-'
 })
@@ -681,22 +1142,25 @@ const currentSensorLabels = computed(() => {
   return getSensorDisplayLabels(selectedEquipment.value?.type)
 })
 
-// 현재 설비의 측정 센서 데이터
-const currentSensorData = computed(() => {
-  if (!latestLog.data) return {}
-  
-  const labels = currentSensorLabels.value
-  const data = {}
-  
-  Object.entries(labels).forEach(([key, label]) => {
-    data[key] = {
-      label: label.label,
-      value: latestLog.data[label.key] || 0,
-      unit: label.unit,
-    }
-  })
-  
-  return data
+const formatMetricValue = (field) => {
+  const keys = Array.isArray(field.key) ? field.key : [field.key]
+  const rawValue = keys.map((key) => latestLog.data?.[key]).find((value) => value !== undefined && value !== null)
+  const value = Number(rawValue)
+  if (!Number.isFinite(value)) return '-'
+  return value.toFixed(field.decimals ?? 1)
+}
+
+const currentMetricCards = computed(() => {
+  const sensorCards = Object.entries(currentSensorLabels.value).map(([key, field]) => ({
+    key,
+    label: field.label,
+    valueText: formatMetricValue(field),
+  }))
+
+  return [
+    { key: 'running-time', label: '가동 시간', valueText: runningTime.value || '-' },
+    ...sensorCards,
+  ]
 })
 </script>
 
@@ -890,15 +1354,15 @@ h2 span {
 }
 
 .legend.idle {
-  background: #ffb435;
+  background: #3b82f6;
 }
 
 .legend.stop {
-  background: #ff4f63;
+  background: #ffb435;
 }
 
-.legend.unknown {
-  background: #a5afbd;
+.legend.alarm {
+  background: #ff4f63;
 }
 
 .filter-select,
@@ -1012,6 +1476,13 @@ h2 span {
   cursor: pointer;
 }
 
+.equipment-node:hover,
+.equipment-node:focus-visible {
+  border-color: #0f75d8;
+  box-shadow: 0 0 0 3px rgba(15, 117, 216, 0.13), 0 8px 18px rgba(26, 53, 88, 0.06);
+  outline: none;
+}
+
 .equipment-node strong {
   font-size: 13px;
   color: #09295a;
@@ -1071,6 +1542,7 @@ h2 span {
   left: 50%;
   top: 0;
   transform: translateX(-50%);
+  min-width: 58px;
   color: #58667a;
   font-size: 12px;
   font-weight: 950;
@@ -1079,6 +1551,8 @@ h2 span {
   border-radius: 999px;
   background: #fff;
   border: 1px solid #c8d1df;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .conveyor-track {
@@ -1099,15 +1573,23 @@ h2 span {
 }
 
 .conveyor-link.running .conveyor-track {
-  border-color: #27bd78;
+  border-color: #e7f8ef;
+  background: #e7f8ef;
 }
 
 .conveyor-link.idle .conveyor-track {
-  border-color: #ffae18;
+  border-color: #edf5ff;
+  background: #edf5ff;
 }
 
 .conveyor-link.stop .conveyor-track {
-  border-color: #ff3030;
+  border-color: #fff5e2;
+  background: #fff5e2;
+}
+
+.conveyor-link.alarm .conveyor-track {
+  border-color: #ffecef;
+  background: #ffecef;
 }
 
 .conveyor-track::before,
@@ -1139,8 +1621,8 @@ h2 span {
 }
 
 .equipment-node.running {
-  border-color: #27bd78;
   background: #f0fbf5;
+  border-color: #f0fbf5;
 }
 
 .equipment-node.running .node-icon,
@@ -1154,38 +1636,53 @@ h2 span {
 }
 
 .equipment-node.idle {
-  border-color: #ffae18;
-  background: #fff8eb;
+  background: #edf5ff;
+  border-color: #edf5ff;
 }
 
 .equipment-node.idle .node-icon,
 .side-status.idle {
-  color: #ffae18;
+  color: #2f6fdf;
 }
 
 .equipment-node.idle .node-status {
-  color: #f49a00;
-  background: #fff5e4;
+  color: #2f6fdf;
+  background: #dfeeff;
 }
 
 .equipment-node.stop {
-  border-color: #ff3030;
-  background: #fff1f2;
+  background: #fff8eb;
+  border-color: #fff8eb;
 }
 
 .equipment-node.stop .node-icon,
 .side-status.stop {
-  color: #ff3030;
+  color: #ffae18;
 }
 
 .equipment-node.stop .node-status {
+  color: #f49a00;
+  background: #fff5e4;
+}
+
+.equipment-node.alarm {
+  background: #fff1f2;
+  border-color: #fff1f2;
+}
+
+.equipment-node.alarm .node-icon,
+.side-status.alarm {
+  color: #ff3030;
+}
+
+.equipment-node.alarm .node-status {
   color: #ff3030;
   background: #ffecec;
 }
 
 .equipment-node.unknown {
-  border-color: #a5afbd;
   background: #f4f6f9;
+  border-color: #f4f6f9;
 }
 
 .equipment-node.unknown .node-icon,
@@ -1323,12 +1820,27 @@ tbody tr {
 }
 
 .status-pill.idle,
+.status-badge.idle {
+  background: #edf5ff;
+  color: #2f6fdf;
+}
+
+.status-pill.stop {
+  background: #fff5e2;
+  color: #f0a11a;
+}
+
+.status-pill.alarm,
+.status-badge.alarm {
+  background: #ffecef;
+  color: #f04a5d;
+}
+
 .alarm-pill.warning {
   background: #fff5e2;
   color: #f0a11a;
 }
 
-.status-pill.stop,
 .alarm-pill.danger {
   background: #ffecef;
   color: #f04a5d;
@@ -1455,13 +1967,13 @@ tbody tr {
 }
 
 .status-badge.idle {
-  background: #fff0df;
-  color: #df7922;
+  background: #edf5ff;
+  color: #2f6fdf;
 }
 
 .status-badge.stop {
-  background: #ffe7eb;
-  color: #fa2c45;
+  background: #fff5e2;
+  color: #f0a11a;
 }
 
 .status-badge.unknown {
@@ -1550,11 +2062,32 @@ tbody tr {
 }
 
 .inverter-control {
+  position: relative;
   margin: 0 0 16px;
   padding: 12px;
   border: 1px solid #dfe8f4;
   border-radius: 10px;
   background: #f8fbff;
+}
+
+.inverter-control.locked {
+  pointer-events: none;
+  user-select: none;
+}
+
+.inverter-control.locked::after {
+  content: '🔒 CNV-001 전용 제어 영역';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(190, 205, 225, 0.78);
+  color: #3a4a5e;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
 }
 
 .control-header {
@@ -1578,7 +2111,7 @@ tbody tr {
 
 .control-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(150px, 1.15fr) repeat(2, minmax(0, 0.85fr));
   gap: 8px;
 }
 
@@ -1606,12 +2139,52 @@ tbody tr {
   font-weight: 950;
 }
 
-.control-actions {
+.frequency-input-row {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.control-actions button,
+.frequency-input-row input {
+  width: 92px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid #d4deec;
+  border-radius: 9px;
+  background: #fff;
+  color: #0d2448;
+  font-size: 18px;
+  font-weight: 900;
+  outline: 0;
+  box-shadow: inset 0 1px 2px rgba(35, 63, 104, 0.04);
+}
+
+.frequency-input-row input:focus {
+  border-color: #0f75d8;
+  box-shadow: 0 0 0 3px rgba(15, 117, 216, 0.13);
+}
+
+.frequency-input-row strong {
+  margin: 0;
+  color: #0d2448;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.confirm-button {
+  width: 100%;
+  height: 42px;
+  border: 1px solid #073c7b;
+  border-radius: 16px;
+  background: #073c7b;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
 .state-button {
   min-width: 48px;
   height: 30px;
@@ -1637,6 +2210,13 @@ tbody tr {
 .state-button.stop.active {
   background: #fa2c45;
   border-color: #fa2c45;
+}
+
+.confirm-button:disabled,
+.state-button:disabled,
+.frequency-input-row input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .metrics-grid {
@@ -1680,6 +2260,14 @@ tbody tr {
   grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+}
+
+.recent-alarm-list .empty-alarm-row {
+  display: block;
+  padding: 8px 0;
+  color: #7d8898;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .alarm-mark {
