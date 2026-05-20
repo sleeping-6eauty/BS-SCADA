@@ -105,7 +105,6 @@ const equipmentDefs = [
   { code: 'CNV', type: '컨베이어', icon: '→', manufacturer: 'Siemens' },
 ]
 
-const zones = ['Zone A', 'Zone B', 'Zone C']
 const statusPool = [
   { status: 'running', statusLabel: '가동' },
   { status: 'idle', statusLabel: '대기' },
@@ -128,13 +127,10 @@ const buildEquipmentList = () => {
   let lifeSeed = 82
   equipmentDefs.forEach((def, typeIdx) => {
     for (let unit = 1; unit <= 3; unit += 1) {
-      const zone = zones[typeIdx % zones.length]
-      const lineNo = ((typeIdx + unit) % 3) + 1
-      const line = `${zone} - Line ${lineNo}`
+      const line = `Line${unit}`
       const life = Math.max(12, (lifeSeed + typeIdx * 7 - unit * 11) % 91)
       lifeSeed -= 3
       const statusInfo = statusPool[(typeIdx + unit) % statusPool.length]
-      const month = String(((typeIdx + unit) % 12) + 1).padStart(2, '0')
       const id = `${def.code}-${String(unit).padStart(3, '0')}`
       list.push({
         id, name: id,
@@ -143,7 +139,6 @@ const buildEquipmentList = () => {
         status: statusInfo.status,
         statusLabel: statusInfo.statusLabel,
         life,
-        replaceDate: life < 35 ? `2024-${month}-10` : `2025-${month}-18`,
         line, icon: def.icon, manufacturer: def.manufacturer,
         equipId: id, location: line,
         lastUpdate: '2024-05-24 10:30:45',
@@ -326,12 +321,11 @@ const matchesSearch = (item, query) => {
 }
 
 const matchesLine = (item, lineFilter) =>
-  lineFilter === '전체 라인' || item.line.includes(lineFilter)
+  lineFilter === '전체 라인' || item.line === lineFilter
 
 const sortEquipment = (items) => {
   const sorted = [...items]
   if (sortOrder.value === '잔존 수명 높은 순') return sorted.sort((a, b) => b.life - a.life)
-  if (sortOrder.value === '예상 교체 시기순') return sorted.sort((a, b) => a.replaceDate.localeCompare(b.replaceDate))
   return sorted.sort((a, b) => a.life - b.life)
 }
 
@@ -350,9 +344,36 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(filteredEquipment.value.length / rowsPerPage.value)),
 )
 
+// ─── 목록형 컬럼 정렬 ───────────────────────────────────────────────────
+const tableSort = reactive({ column: null, direction: 'asc' })
+
+const toggleTableSort = (col) => {
+  if (tableSort.column === col) {
+    tableSort.direction = tableSort.direction === 'asc' ? 'desc' : 'asc'
+  } else {
+    tableSort.column = col
+    tableSort.direction = 'asc'
+  }
+}
+
+const sortedTableRows = computed(() => {
+  const items = [...filteredEquipment.value]
+  if (!tableSort.column) return items
+  return items.sort((a, b) => {
+    if (tableSort.column === 'life') {
+      const diff = Number(a.life) - Number(b.life)
+      return tableSort.direction === 'asc' ? diff : -diff
+    }
+    const av = String(a[tableSort.column] ?? '').toLowerCase()
+    const bv = String(b[tableSort.column] ?? '').toLowerCase()
+    const cmp = av.localeCompare(bv, 'ko')
+    return tableSort.direction === 'asc' ? cmp : -cmp
+  })
+})
+
 const pagedTableRows = computed(() => {
   const start = (currentPage.value - 1) * rowsPerPage.value
-  return filteredEquipment.value.slice(start, start + rowsPerPage.value)
+  return sortedTableRows.value.slice(start, start + rowsPerPage.value)
 })
 
 watch([searchQuery, selectedLine, sortOrder, rowsPerPage], () => { currentPage.value = 1 })
@@ -392,7 +413,7 @@ const lifeColor = (life) => {
   return 'red'
 }
 
-const isUrgentDate = (date) => date <= '2024-09-30'
+
 </script>
 
 <template>
@@ -426,14 +447,13 @@ const isUrgentDate = (date) => date <= '2024-09-30'
               </div>
               <select v-model="selectedLine" class="filter-select">
                 <option>전체 라인</option>
-                <option>Zone A</option>
-                <option>Zone B</option>
-                <option>Zone C</option>
+                <option>Line1</option>
+                <option>Line2</option>
+                <option>Line3</option>
               </select>
               <select v-model="sortOrder" class="filter-select">
                 <option>잔존 수명 낮은 순</option>
                 <option>잔존 수명 높은 순</option>
-                <option>예상 교체 시기순</option>
               </select>
               <label class="search-box">
                 <span class="search-icon">⌕</span>
@@ -466,10 +486,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                     <div class="skel skel-life-value"></div>
                     <div class="skel skel-bar"></div>
                   </div>
-                  <div class="card-footer">
-                    <div class="skel skel-footer-item"></div>
-                    <div class="skel skel-footer-item"></div>
-                  </div>
                 </div>
               </div>
               <template v-else>
@@ -499,10 +515,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                         <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
                       </div>
                     </div>
-                    <div class="card-footer">
-                      <span>예상 교체 시기</span>
-                      <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
-                    </div>
                   </article>
                 </div>
               </template>
@@ -513,12 +525,21 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                 <table class="data-table life-list-table">
                   <thead>
                     <tr>
-                      <th>설비명</th>
-                      <th>라인</th>
-                      <th>설비 유형</th>
-                      <th>상태</th>
-                      <th>잔존 수명</th>
-                      <th>예상 교체 시기</th>
+                      <th class="sortable" :class="{ active: tableSort.column === 'name' }" @click="toggleTableSort('name')">
+                        설비명 <span class="sort-icon">{{ tableSort.column === 'name' ? (tableSort.direction === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
+                      <th class="sortable" :class="{ active: tableSort.column === 'line' }" @click="toggleTableSort('line')">
+                        라인 <span class="sort-icon">{{ tableSort.column === 'line' ? (tableSort.direction === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
+                      <th class="sortable" :class="{ active: tableSort.column === 'type' }" @click="toggleTableSort('type')">
+                        설비 유형 <span class="sort-icon">{{ tableSort.column === 'type' ? (tableSort.direction === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
+                      <th class="sortable" :class="{ active: tableSort.column === 'status' }" @click="toggleTableSort('status')">
+                        상태 <span class="sort-icon">{{ tableSort.column === 'status' ? (tableSort.direction === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
+                      <th class="sortable" :class="{ active: tableSort.column === 'life' }" @click="toggleTableSort('life')">
+                        잔존 수명 <span class="sort-icon">{{ tableSort.column === 'life' ? (tableSort.direction === 'asc' ? '↑' : '↓') : '⇅' }}</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -529,12 +550,11 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                         <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td-sm"></div></td>
                         <td><div class="skel skel-td"></div></td>
-                        <td><div class="skel skel-td"></div></td>
                       </tr>
                     </template>
                     <template v-else>
                       <tr v-if="filteredEquipment.length === 0">
-                        <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
+                        <td colspan="5" class="empty-row">검색 결과가 없습니다.</td>
                       </tr>
                       <tr
                         v-for="row in pagedTableRows"
@@ -553,7 +573,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                           <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
                           <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
                         </td>
-                        <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
                       </tr>
                     </template>
                   </tbody>
@@ -580,12 +599,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                     {{ page }}
                   </button>
                   <button type="button" @click="setPage(currentPage + 1)">›</button>
-                </div>
-                <div class="page-size">
-                  <select class="filter-select small">
-                    <option>10 / 페이지</option>
-                    <option>20 / 페이지</option>
-                  </select>
                 </div>
               </div>
             </div>
@@ -1061,12 +1074,38 @@ h2 {
 .status-dot.running { background: #14b993; }
 .status-dot.idle { background: #ff951a; }
 .status-dot.stop { background: #ff3045; }
+.status-dot.alarm { background: #1890ff; }
 
 .life-cell {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.data-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.data-table th.sortable:hover {
+  background: #f0f4f9;
+}
+
+.data-table th.sortable.active {
+  color: #126de0;
+}
+
+.sort-icon {
+  font-size: 10px;
+  color: #b0bfcf;
+  margin-left: 3px;
+  vertical-align: middle;
+}
+
+.data-table th.sortable.active .sort-icon {
+  color: #126de0;
 }
 
 .life-cell strong {
@@ -1106,9 +1145,9 @@ h2 {
 .table-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   margin-top: 14px;
   padding-top: 4px;
+  position: relative;
 }
 
 .rows-control,
@@ -1125,6 +1164,9 @@ h2 {
   display: flex;
   gap: 8px;
   align-items: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .pagination button {
