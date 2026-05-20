@@ -1,19 +1,9 @@
 <script setup>
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import mqtt from 'mqtt'
-import { Client } from '@stomp/stompjs'
-import SockJS from 'sockjs-client'
 import AppTopbar from '@/components/AppTopbar.vue'
 import { getEquipmentStatus } from '@/api/dashboard'
-
-const defaultBrokerUrl = window.location.protocol === 'https:'
-  ? 'wss://broker.mqttdashboard.com:8884/mqtt'
-  : 'ws://broker.mqttdashboard.com:8000/mqtt'
-const brokerUrl = import.meta.env.VITE_MQTT_BROKER_URL ?? defaultBrokerUrl
-const topicFilter = import.meta.env.VITE_MQTT_TOPIC ?? 'factory/equipment/+/realtime'
-const mqttUsername = import.meta.env.VITE_MQTT_USERNAME
-const mqttPassword = import.meta.env.VITE_MQTT_PASSWORD
 
 const router = useRouter()
 const searchQuery = ref('')
@@ -25,6 +15,86 @@ const currentPage = ref(1)
 const selectedId = ref('PLF-001')
 const isLoading = ref(true)
 
+// ─── MQTT 설정 (EquipmentMonitoring과 동일한 브로커/토픽) ───────────────
+const defaultBrokerUrl = (() => {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return 'wss://broker.mqttdashboard.com:8884/mqtt'
+  }
+  return 'ws://broker.mqttdashboard.com:8000/mqtt'
+})()
+
+const rawBrokerUrl =
+  import.meta.env.VITE_MQTT_BROKER_URL ??
+  import.meta.env.VITE_MQTT_URL ??
+  defaultBrokerUrl
+const mqttRealtimeTopic = import.meta.env.VITE_MQTT_TOPIC ?? 'factory/equipment/+/realtime'
+const mqttAlarmTopic = import.meta.env.VITE_MQTT_ALARM_TOPIC ?? 'factory/equipment/+/alarm'
+const mqttUsername = import.meta.env.VITE_MQTT_USERNAME
+const mqttPassword = import.meta.env.VITE_MQTT_PASSWORD
+
+const statusCodeMap = {
+  RUN: 'running', RUNNING: 'running',
+  IDLE: 'idle', WAIT: 'idle',
+  STOP: 'stop', STOPPED: 'stop',
+  ALARM: 'alarm', UNKNOWN: 'unknown',
+}
+const statusTextMap = { running: '가동', idle: '대기', stop: '정지', alarm: '알람', unknown: '알 수 없음' }
+const alarmLevelMap = {
+  NORMAL: 'normal', WARN: 'warning', WARNING: 'warning',
+  DANGER: 'danger', ALARM: 'danger', CRITICAL: 'danger',
+}
+const alarmLabelMap = { normal: '정상', warning: '경고', danger: '위험' }
+
+const realtimeEquipmentData = reactive({})
+const recentAlarms = ref([])
+let mqttClient = null
+
+// ─── MQTT 연결 유틸 ─────────────────────────────────────────────────────
+const resolveBrokerUrl = (rawUrl) => {
+  const value = String(rawUrl ?? '').trim()
+  if (!value) return defaultBrokerUrl
+  const normalizeHost = (h) => {
+    const l = String(h ?? '').toLowerCase()
+    if (l === 'mqtt-dashboard.com' || l === 'broker.mqtt-dashboard.com') return 'broker.mqttdashboard.com'
+    return h
+  }
+  if (/^(wss?|mqtts?):\/\//i.test(value)) {
+    const src = new URL(value)
+    const secure = src.protocol === 'wss:' || src.protocol === 'mqtts:'
+    src.hostname = normalizeHost(src.hostname)
+    src.protocol = secure ? 'wss:' : 'ws:'
+    if (!src.port) src.port = secure ? '8884' : '8000'
+    if (!secure && src.port === '1883') src.port = '8000'
+    if (secure && src.port === '8883') src.port = '8884'
+    if (!src.pathname || src.pathname === '/') src.pathname = '/mqtt'
+    return src.href
+  }
+  const ni = value
+    .replace(/^mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+    .replace(/^broker\.mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+  const u = new URL(`ws://${ni}`)
+  if (!u.port || u.port === '1883') u.port = '8000'
+  if (!u.pathname || u.pathname === '/') u.pathname = '/mqtt'
+  return u.href
+}
+
+const parsePayload = (buf) => {
+  try {
+    const p = JSON.parse(buf.toString())
+    return p && typeof p === 'object' ? p : null
+  } catch { return null }
+}
+
+const parseTopicId = (topic, suffix) => {
+  const m = new RegExp(`^factory/equipment/([^/]+)/${suffix}$`, 'i').exec(topic ?? '')
+  return m?.[1] ?? ''
+}
+
+const isFullId = (id) => /^[A-Z]+-\d{3}$/i.test(id)
+const normalizeStatus = (s) => statusCodeMap[String(s ?? '').trim().toUpperCase()] ?? String(s ?? 'unknown').toLowerCase()
+const normalizeAlarmLevel = (s) => alarmLevelMap[String(s ?? '').trim().toUpperCase()] ?? 'warning'
+
+// ─── 설비 데이터 정의 ────────────────────────────────────────────────────
 const equipmentDefs = [
   { code: 'PLF', type: '패널 투입 장치', icon: '🏗️', manufacturer: '현대자동화' },
   { code: 'JIG', type: '차체 지그', icon: '📐', manufacturer: 'Daewon Precision' },
@@ -36,19 +106,26 @@ const equipmentDefs = [
 ]
 
 const zones = ['Zone A', 'Zone B', 'Zone C']
+const statusPool = [
+  { status: 'running', statusLabel: '가동' },
+  { status: 'idle', statusLabel: '대기' },
+  { status: 'stop', statusLabel: '정지' },
+]
 
-const STATUS_MAP = { RUN: 'running', STOP: 'stop', IDLE: 'idle', ALARM: 'alarm' }
+const STATUS_MAP = { RUN: 'running', STOP: 'stop', IDLE: 'idle', ALARM: 'stop' }
 const STATUS_LABEL_MAP = { RUN: '가동', STOP: '정지', IDLE: '대기', ALARM: '알람' }
 
-const parseTopicEquipmentId = (topic) => {
-  const match = /^factory\/equipment\/([^/]+)\/realtime$/i.exec(topic ?? '')
-  return match?.[1] ?? ''
+const formatRunSeconds = (seconds) => {
+  const total = Number(seconds)
+  if (!Number.isFinite(total)) return null
+  const s = Math.max(0, Math.floor(total))
+  return [Math.floor(s / 3600), Math.floor((s % 3600) / 60), s % 60]
+    .map((u) => String(u).padStart(2, '0')).join(':')
 }
 
 const buildEquipmentList = () => {
   const list = []
   let lifeSeed = 82
-
   equipmentDefs.forEach((def, typeIdx) => {
     for (let unit = 1; unit <= 3; unit += 1) {
       const zone = zones[typeIdx % zones.length]
@@ -56,69 +133,84 @@ const buildEquipmentList = () => {
       const line = `${zone} - Line ${lineNo}`
       const life = Math.max(12, (lifeSeed + typeIdx * 7 - unit * 11) % 91)
       lifeSeed -= 3
+      const statusInfo = statusPool[(typeIdx + unit) % statusPool.length]
+      const month = String(((typeIdx + unit) % 12) + 1).padStart(2, '0')
       const id = `${def.code}-${String(unit).padStart(3, '0')}`
-
       list.push({
-        id,
-        name: id,
+        id, name: id,
         type: def.type,
-        status: 'unknown',
-        statusLabel: '-',
+        rawType: def.code.toLowerCase(),
+        status: statusInfo.status,
+        statusLabel: statusInfo.statusLabel,
         life,
-        line,
-        icon: def.icon,
-        manufacturer: def.manufacturer,
-        equipId: id,
-        location: line,
-        lastUpdate: '-',
-        runtime: '-',
-        temp: '-',
-        current: '-',
-        cycleTime: '-',
-        production: '-',
+        replaceDate: life < 35 ? `2024-${month}-10` : `2025-${month}-18`,
+        line, icon: def.icon, manufacturer: def.manufacturer,
+        equipId: id, location: line,
+        lastUpdate: '2024-05-24 10:30:45',
+        runtime: statusInfo.status === 'stop' ? '00:00:00' : '02:45:12',
+        temp: `${(36 + typeIdx).toFixed(1)} °C`,
+        current: statusInfo.status === 'stop' ? '0.0 A' : `${(5 + unit).toFixed(1)} A`,
+        cycleTime: statusInfo.status === 'stop' ? '-' : `${(10 + unit).toFixed(1)} s`,
+        production: statusInfo.status === 'stop' ? '0 EA' : `${800 + typeIdx * 120 + unit * 40} EA`,
       })
     }
   })
-
   return list
 }
 
 const equipmentList = ref(buildEquipmentList())
 
-const recentAlarms = [
-  { title: 'PLF-001 투입 센서 이상', time: '2024-05-24 10:15', level: 'warning', label: '경고' },
-  { title: 'WLD-002 용접 전류 과다', time: '2024-05-24 09:32', level: 'warning', label: '경고' },
-  { title: 'ROB-003 축 구동 오류', time: '2024-05-24 08:21', level: 'danger', label: '위험' },
-  { title: 'VSI-001 비전 통신 지연', time: '2024-05-24 07:58', level: 'warning', label: '경고' },
-]
+// ─── MQTT payload 처리 ───────────────────────────────────────────────────
+const applyRealtimePayload = (payload) => {
+  const equipmentId = String(payload?.equipment_id ?? '').trim()
+  if (!equipmentId) return
 
-const refreshEquipments = async () => {
-  try {
-    const data = await getEquipmentStatus()
-    if (!Array.isArray(data)) return
+  const status = normalizeStatus(payload.status)
+  realtimeEquipmentData[equipmentId] = { ...payload, equipment_id: equipmentId, status }
 
-    for (const remote of data) {
-      const remoteId = remote.equipmentId ?? remote.equipment_id
-      const idx = equipmentList.value.findIndex((item) => item.id === remoteId)
-      if (idx === -1) continue
-
-      const item = equipmentList.value[idx]
-      equipmentList.value[idx] = {
-        ...item,
-        life: remote.healthScore != null ? Math.round(remote.healthScore) : item.life,
-        lastUpdate: remote.lastUpdate ?? remote.updatedAt ?? item.lastUpdate,
-      }
+  const idx = equipmentList.value.findIndex((e) => e.id === equipmentId)
+  if (idx !== -1) {
+    equipmentList.value[idx] = {
+      ...equipmentList.value[idx],
+      status,
+      statusLabel: statusTextMap[status] ?? equipmentList.value[idx].statusLabel,
+      lastUpdate: payload.timestamp ?? equipmentList.value[idx].lastUpdate,
+      runtime: payload.accumulated_run_hours != null
+        ? (formatRunSeconds(payload.accumulated_run_hours) ?? equipmentList.value[idx].runtime)
+        : equipmentList.value[idx].runtime,
     }
-  } catch {
-    // 백엔드 미연결 시 기존 목업 유지
   }
 }
 
-let stompClient = null
-let mqttClient = null
+const applyAlarmPayload = (payload, topic) => {
+  const rawId = String(payload?.equipment_id ?? '').trim()
+  const topicId = parseTopicId(topic, 'alarm')
+  const equipmentId = isFullId(rawId) ? rawId : isFullId(topicId) ? topicId : (rawId || topicId)
+  if (!equipmentId || !isFullId(equipmentId)) return
+
+  const level = normalizeAlarmLevel(payload.alarm_status)
+  const nextAlarm = {
+    id: `${equipmentId}-${payload.timestamp ?? Date.now()}-${payload.alarm_type ?? 'alarm'}`,
+    equipmentId,
+    title: payload.alarm_type ?? '-',
+    time: payload.timestamp ?? '-',
+    level,
+    label: alarmLabelMap[level] ?? payload.alarm_status ?? '-',
+  }
+  recentAlarms.value = [nextAlarm, ...recentAlarms.value.filter((a) => a.id !== nextAlarm.id)].slice(0, 50)
+}
+
+const handleMqttMessage = (topic, message) => {
+  const payload = parsePayload(message)
+  if (!payload) return
+  if (/\/alarm$/i.test(topic ?? '')) { applyAlarmPayload(payload, topic); return }
+  if (/\/realtime$/i.test(topic ?? '')) {
+    applyRealtimePayload({ ...payload, equipment_id: payload.equipment_id ?? parseTopicId(topic, 'realtime') })
+  }
+}
 
 const connectMqtt = () => {
-  mqttClient = mqtt.connect(brokerUrl, {
+  mqttClient = mqtt.connect(resolveBrokerUrl(rawBrokerUrl), {
     clientId: `bs-scada-life-${Math.random().toString(16).slice(2, 10)}`,
     username: mqttUsername,
     password: mqttPassword,
@@ -126,89 +218,128 @@ const connectMqtt = () => {
     connectTimeout: 10000,
     clean: true,
   })
-
   mqttClient.on('connect', () => {
-    mqttClient.subscribe(topicFilter, { qos: 0 })
+    mqttClient.subscribe([mqttRealtimeTopic, mqttAlarmTopic], { qos: 0 }, (err) => {
+      if (err) console.warn('Failed to subscribe MQTT topics:', err)
+    })
   })
-
-  mqttClient.on('message', (topic, payloadBuffer) => {
-    try {
-      const payload = JSON.parse(payloadBuffer.toString())
-      if (!payload || typeof payload !== 'object') return
-
-      const equipmentId = String(payload.equipment_id ?? parseTopicEquipmentId(topic)).trim()
-      if (!equipmentId) return
-
-      const rawStatus = String(payload.status ?? '').toUpperCase()
-      const status = STATUS_MAP[rawStatus]
-      if (!status) return
-
-      const statusLabel = STATUS_LABEL_MAP[rawStatus]
-
-      const idx = equipmentList.value.findIndex((item) => item.id === equipmentId)
-      if (idx !== -1) {
-        equipmentList.value[idx] = { ...equipmentList.value[idx], status, statusLabel }
-      }
-    } catch {
-      // ignore parse errors
-    }
-  })
+  mqttClient.on('message', handleMqttMessage)
+  mqttClient.on('error', (err) => console.warn('Life MQTT error:', err))
 }
 
-onMounted(async () => {
-  await refreshEquipments()
-  isLoading.value = false
-  connectMqtt()
+// ─── 백엔드 API ──────────────────────────────────────────────────────────
+const refreshEquipments = async () => {
+  try {
+    const data = await getEquipmentStatus()
+    if (!Array.isArray(data)) return
+    equipmentList.value = equipmentList.value.map((item) => {
+      const remote = data.find((e) => (e.equipmentId ?? e.equipment_id) === item.id)
+      if (!remote) return item
+      const rawStatus = remote.status ?? remote.currentStatus
+      return {
+        ...item,
+        status: STATUS_MAP[rawStatus] ?? item.status,
+        statusLabel: STATUS_LABEL_MAP[rawStatus] ?? item.statusLabel,
+        life: remote.healthScore != null ? Math.round(remote.healthScore) : item.life,
+        lastUpdate: remote.lastUpdate ?? remote.updatedAt ?? item.lastUpdate,
+      }
+    })
+  } catch { /* 백엔드 미연결 시 목업 유지 */ }
+}
 
-  stompClient = new Client({
-    webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
-    onConnect: () => {
-      stompClient.subscribe('/topic/dashboard/summary', () => {
-        refreshEquipments()
-      })
-    },
-    onStompError: (frame) => {
-      console.error('STOMP 오류:', frame)
-    },
-    reconnectDelay: 5000,
-  })
-  stompClient.activate()
+// ─── 센서 표시 레이블 ────────────────────────────────────────────────────
+const getSensorDisplayLabels = (type) => {
+  if (type === 'cnv') return {
+    s1: { label: '모터 내부 온도(℃)', key: 'motor_temperature_c', decimals: 1 },
+    s2: { label: '모터 전류(A)', key: ['motor_current_c', 'motor_current_a'], decimals: 1 },
+    s3: { label: '이동 속도(m/s)', key: 'moving_speed_m_s', decimals: 2 },
+  }
+  if (type === 'plf') return {
+    s1: { label: '모터 전류(A)', key: ['moter_current_a', 'motor_current_a'], decimals: 1 },
+    s2: { label: '진공 압력(kPa)', key: ['vaccum_pressure_kpa', 'vacuum_pressure_kpa'], decimals: 1 },
+    s3: { label: '위치 오차(mm)', key: 'position_error_mm', decimals: 2 },
+  }
+  if (type === 'jig') return {
+    s1: { label: '클램프 압력(bar)', key: 'clamp_pressure_bar', decimals: 2 },
+    s2: { label: '공압 압력(bar)', key: ['pneumatic_press_bar', 'pneumatic_pressure_bar'], decimals: 2 },
+    s3: { label: '클램프 위치(mm)', key: 'clamp_position_mm', decimals: 1 },
+  }
+  if (type === 'rob') return {
+    s1: { label: '로봇 스위블(deg)', key: 'robot_swivel', decimals: 1 },
+    s2: { label: '로봇 수평축(mm)', key: 'robot_horizontal', decimals: 1 },
+    s3: { label: '로봇 수직축(mm)', key: 'robot_vertical', decimals: 1 },
+    s4: { label: '툴 오프셋 오차(mm)', key: ['tool_offset_er', 'tool_offset_error_mm'], decimals: 2 },
+  }
+  if (type === 'wld') return {
+    s1: { label: '용접 전압 DC(V)', key: 'weld_voltage_dc', decimals: 1 },
+    s2: { label: '용접 전류 DC(A)', key: 'weld_current_dc', decimals: 1 },
+    s3: { label: '용접 전류 AC(A)', key: 'weld_current_ac', decimals: 1 },
+    s4: { label: '용접 속도(mm/s)', key: 'weld_speed', decimals: 1 },
+  }
+  if (type === 'slr') return {
+    s1: { label: '토출 압력(bar)', key: 'dispense_pressure_bar', decimals: 2 },
+    s2: { label: '실러 온도(℃)', key: 'sealer_temperature_c', decimals: 1 },
+    s3: { label: '유량(ml/s)', key: 'flow_rate_ml_s', decimals: 2 },
+  }
+  return {}
+}
+
+const formatMetricValue = (field) => {
+  const latestLog = realtimeEquipmentData[selectedEquipment.value?.id]
+  const keys = Array.isArray(field.key) ? field.key : [field.key]
+  const rawValue = keys.map((k) => latestLog?.[k]).find((v) => v !== undefined && v !== null)
+  const value = Number(rawValue)
+  if (!Number.isFinite(value)) return '-'
+  return value.toFixed(field.decimals ?? 1)
+}
+
+const currentSensorLabels = computed(() =>
+  getSensorDisplayLabels(selectedEquipment.value?.rawType ?? ''),
+)
+
+const currentMetricCards = computed(() => {
+  const eq = selectedEquipment.value
+  if (!eq) return []
+  const sensorCards = Object.entries(currentSensorLabels.value).map(([key, field]) => ({
+    key,
+    label: field.label,
+    valueText: formatMetricValue(field),
+  }))
+  return [
+    { key: 'runtime', label: '가동 시간', valueText: eq.runtime || '-' },
+    ...sensorCards,
+  ]
 })
 
-onUnmounted(() => {
-  mqttClient?.end(true)
-  mqttClient = null
-  stompClient?.deactivate()
-  stompClient = null
+// ─── 알람 (선택 설비 ID 기반 필터링) ───────────────────────────────────
+const selectedRecentAlarms = computed(() => {
+  const id = selectedId.value
+  if (!id) return []
+  return recentAlarms.value.filter((a) => a.equipmentId === id).slice(0, 10)
 })
 
+// ─── 목록 필터/정렬/페이징 ───────────────────────────────────────────────
 const matchesSearch = (item, query) => {
   if (!query) return true
-  const haystack = [item.name, item.type, item.equipId, item.line, item.location, item.id]
-    .join(' ')
-    .toLowerCase()
-  return haystack.includes(query)
+  return [item.name, item.type, item.equipId, item.line, item.location, item.id]
+    .join(' ').toLowerCase().includes(query)
 }
 
-const matchesLine = (item, lineFilter) => {
-  if (lineFilter === '전체 라인') return true
-  return item.line.includes(lineFilter)
-}
+const matchesLine = (item, lineFilter) =>
+  lineFilter === '전체 라인' || item.line.includes(lineFilter)
 
 const sortEquipment = (items) => {
   const sorted = [...items]
-  if (sortOrder.value === '잔존 수명 높은 순') {
-    return sorted.sort((a, b) => b.life - a.life)
-  }
+  if (sortOrder.value === '잔존 수명 높은 순') return sorted.sort((a, b) => b.life - a.life)
+  if (sortOrder.value === '예상 교체 시기순') return sorted.sort((a, b) => a.replaceDate.localeCompare(b.replaceDate))
   return sorted.sort((a, b) => a.life - b.life)
 }
 
 const filteredEquipment = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  const filtered = equipmentList.value.filter(
-    (item) => matchesSearch(item, query) && matchesLine(item, selectedLine.value),
+  return sortEquipment(
+    equipmentList.value.filter((item) => matchesSearch(item, query) && matchesLine(item, selectedLine.value)),
   )
-  return sortEquipment(filtered)
 })
 
 const selectedEquipment = computed(
@@ -224,9 +355,7 @@ const pagedTableRows = computed(() => {
   return filteredEquipment.value.slice(start, start + rowsPerPage.value)
 })
 
-watch([searchQuery, selectedLine, sortOrder, rowsPerPage], () => {
-  currentPage.value = 1
-})
+watch([searchQuery, selectedLine, sortOrder, rowsPerPage], () => { currentPage.value = 1 })
 
 watch(filteredEquipment, (list) => {
   if (!list.some((item) => item.id === selectedId.value) && list.length > 0) {
@@ -234,16 +363,27 @@ watch(filteredEquipment, (list) => {
   }
 })
 
-const selectEquipment = (id) => {
-  selectedId.value = id
-}
+// ─── 라이프사이클 ────────────────────────────────────────────────────────
+onMounted(async () => {
+  await refreshEquipments()
+  isLoading.value = false
+  connectMqtt()
+})
+
+onUnmounted(() => {
+  if (mqttClient) { mqttClient.end(true); mqttClient = null }
+})
+
+// ─── UI 헬퍼 ─────────────────────────────────────────────────────────────
+const selectEquipment = (id) => { selectedId.value = id }
 
 const setPage = (page) => {
   currentPage.value = Math.min(Math.max(page, 1), totalPages.value)
 }
 
 const goToAlarmPage = () => {
-  router.push('/equipment-alarm')
+  const id = selectedId.value
+  router.push({ name: 'equipment-alarm', query: id ? { equipmentId: id } : {} })
 }
 
 const lifeColor = (life) => {
@@ -252,6 +392,7 @@ const lifeColor = (life) => {
   return 'red'
 }
 
+const isUrgentDate = (date) => date <= '2024-09-30'
 </script>
 
 <template>
@@ -292,6 +433,7 @@ const lifeColor = (life) => {
               <select v-model="sortOrder" class="filter-select">
                 <option>잔존 수명 낮은 순</option>
                 <option>잔존 수명 높은 순</option>
+                <option>예상 교체 시기순</option>
               </select>
               <label class="search-box">
                 <span class="search-icon">⌕</span>
@@ -324,6 +466,10 @@ const lifeColor = (life) => {
                     <div class="skel skel-life-value"></div>
                     <div class="skel skel-bar"></div>
                   </div>
+                  <div class="card-footer">
+                    <div class="skel skel-footer-item"></div>
+                    <div class="skel skel-footer-item"></div>
+                  </div>
                 </div>
               </div>
               <template v-else>
@@ -353,6 +499,10 @@ const lifeColor = (life) => {
                         <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
                       </div>
                     </div>
+                    <div class="card-footer">
+                      <span>예상 교체 시기</span>
+                      <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
+                    </div>
                   </article>
                 </div>
               </template>
@@ -368,6 +518,7 @@ const lifeColor = (life) => {
                       <th>설비 유형</th>
                       <th>상태</th>
                       <th>잔존 수명</th>
+                      <th>예상 교체 시기</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -377,6 +528,7 @@ const lifeColor = (life) => {
                         <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td-sm"></div></td>
+                        <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td"></div></td>
                       </tr>
                     </template>
@@ -401,6 +553,7 @@ const lifeColor = (life) => {
                           <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
                           <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
                         </td>
+                        <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
                       </tr>
                     </template>
                   </tbody>
@@ -439,11 +592,11 @@ const lifeColor = (life) => {
           </section>
         </div>
 
+        <!-- ── 우측 카드 (설비현황과 동일 구조 + MQTT 실시간) ── -->
         <aside class="right-column">
           <section class="panel detail-panel">
             <div class="panel-header">
               <h2>설비 상세 정보</h2>
-              <button type="button" class="more-btn">더보기 ›</button>
             </div>
 
             <div class="detail-header">
@@ -466,29 +619,9 @@ const lifeColor = (life) => {
 
             <h3 class="sub-title">주요 데이터</h3>
             <div class="metrics-grid">
-              <div class="metric-box">
-                <span>가동 상태</span>
-                <strong class="running-text">{{ selectedEquipment.statusLabel === '가동' ? 'Running' : selectedEquipment.statusLabel }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>가동 시간</span>
-                <strong>{{ selectedEquipment.runtime }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>현재 온도</span>
-                <strong>{{ selectedEquipment.temp }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>전류</span>
-                <strong>{{ selectedEquipment.current }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>사이클 타임</span>
-                <strong>{{ selectedEquipment.cycleTime }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>생산 수량</span>
-                <strong>{{ selectedEquipment.production }}</strong>
+              <div v-for="metric in currentMetricCards" :key="metric.key" class="metric-box">
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.valueText }}</strong>
               </div>
             </div>
           </section>
@@ -499,13 +632,16 @@ const lifeColor = (life) => {
               <button type="button" class="more-btn" @click="goToAlarmPage">더보기 ›</button>
             </div>
             <ul class="alarm-list">
-              <li v-for="(alarm, idx) in recentAlarms" :key="idx" :class="alarm.level">
+              <li v-for="alarm in selectedRecentAlarms" :key="alarm.id">
                 <span class="alarm-icon">{{ alarm.level === 'danger' ? '⚠' : '△' }}</span>
                 <div class="alarm-body">
                   <strong>{{ alarm.title }}</strong>
                   <span>{{ alarm.time }}</span>
                 </div>
                 <em :class="alarm.level">{{ alarm.label }}</em>
+              </li>
+              <li v-if="selectedRecentAlarms.length === 0" class="empty-alarm-item">
+                수신된 알람이 없습니다.
               </li>
             </ul>
           </section>
@@ -777,29 +913,24 @@ h2 {
   font-weight: 900;
 }
 
-.status-badge.unknown {
-  background: #f1f3f7;
-  color: #9aa8bc;
-}
-
 .status-badge.running {
   background: #e1f6ef;
   color: #12a985;
 }
 
 .status-badge.idle {
-  background: #dbeafe;
-  color: #2563eb;
+  background: #fff0df;
+  color: #df7922;
 }
 
 .status-badge.stop {
-  background: #fff0df;
-  color: #f97316;
+  background: #ffe7eb;
+  color: #fa2c45;
 }
 
 .status-badge.alarm {
-  background: #ffe7eb;
-  color: #ef4444;
+  background: #ffecef;
+  color: #f04a5d;
 }
 
 .card-life {
@@ -927,11 +1058,9 @@ h2 {
   vertical-align: middle;
 }
 
-.status-dot.unknown { background: #c5d0e0; }
 .status-dot.running { background: #14b993; }
-.status-dot.idle { background: #2563eb; }
-.status-dot.stop { background: #f97316; }
-.status-dot.alarm { background: #ef4444; }
+.status-dot.idle { background: #ff951a; }
+.status-dot.stop { background: #ff3045; }
 
 .life-cell {
   display: flex;
@@ -1015,12 +1144,13 @@ h2 {
   border-color: transparent;
 }
 
+/* ── 우측 카드 ─────────────────────────────────────── */
 .more-btn {
   border: 0;
   background: transparent;
-  color: #0d2448;
-  font-weight: 950;
-  font-size: 13px;
+  color: #627087;
+  font-weight: 800;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -1108,10 +1238,6 @@ h2 {
   color: #0d2448;
 }
 
-.running-text {
-  color: #12b58f !important;
-}
-
 .alarm-panel {
   display: flex;
   flex-direction: column;
@@ -1120,7 +1246,9 @@ h2 {
 .alarm-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 0 0;
+  max-height: 136px;
+  overflow-y: auto;
 }
 
 .alarm-list li {
@@ -1184,6 +1312,15 @@ h2 {
 .alarm-list em.danger {
   background: #fff1f0;
   color: #cf1322;
+}
+
+.empty-alarm-item {
+  display: block;
+  padding: 8px 0;
+  color: #7d8898;
+  font-size: 12px;
+  font-weight: 850;
+  border-bottom: 0;
 }
 
 .green { color: #12b58f; }
