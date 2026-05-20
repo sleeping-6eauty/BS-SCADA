@@ -1,8 +1,11 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import logoImage from '@/assets/logo.png'
 import AlarmModal from '@/components/AlarmModal.vue'
 import { getAlarmLog, getMyEquipments } from '@/api/alarm.js'
+
+const router = useRouter()
 
 defineProps({
   activeMenu: {
@@ -140,6 +143,14 @@ const loadOpenAlarmCount = async () => {
   }
 }
 
+const logout = () => {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  showAlarmModal.value = false
+  openAlarmCount.value = 0
+  router.push('/login')
+}
+
 onMounted(() => {
   updateCurrentTime()
   timerId = window.setInterval(updateCurrentTime, 1000)
@@ -159,7 +170,7 @@ onUnmounted(() => {
   <header class="topbar">
     <RouterLink class="brand" to="/dashboard" aria-label="대시보드로 이동">
       <img class="brand-logo" :src="logoImage" alt="BS-SCADA logo" />
-      <strong>BS-SCADA</strong>
+      <strong>FactoryEye</strong>
     </RouterLink>
 
     <nav class="gnb">
@@ -180,6 +191,7 @@ onUnmounted(() => {
     <div class="top-actions">
       <div class="time">◷ {{ currentTime }}</div>
       <div class="admin">👤 {{ currentUserName }}</div>
+      <button class="logout-button" type="button" @click="logout">로그아웃</button>
       <div class="bell-wrap" ref="bellWrapRef">
         <button class="bell" type="button" @click="toggleAlarmModal">🔔<span>{{ openAlarmCount }}</span></button>
         <AlarmModal v-if="showAlarmModal" class="alarm-modal-popup" />
@@ -198,7 +210,9 @@ onUnmounted(() => {
 .gnb a { min-width: 118px; display: grid; place-items: center; font-size: 16px; font-weight: 800; color: rgba(255,255,255,.9); position: relative; white-space: nowrap; }
 .gnb a.active::after { content: ''; position: absolute; left: 18px; right: 18px; bottom: 0; height: 5px; background: #16c7d8; border-radius: 8px 8px 0 0; }
 .top-actions { flex-shrink: 0; margin-left: auto; height: 100%; display: flex; align-items: center; }
-.time, .admin { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; border-left: 1px solid rgba(255,255,255,.12); }
+.time, .admin, .logout-button { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; border-left: 1px solid rgba(255,255,255,.12); }
+.logout-button { border-top: 0; border-right: 0; border-bottom: 0; color: rgba(255,255,255,.92); background: transparent; font-size: 14px; cursor: pointer; }
+.logout-button:hover { background: rgba(255,255,255,.08); color: #fff; }
 .bell-wrap { position: relative; height: 100%; display: flex; align-items: center; border-left: 1px solid rgba(255,255,255,.12); }
 .bell { height: 100%; display: flex; align-items: center; gap: 10px; padding: 0 22px; font-weight: 800; position: relative; border: 0; color: #fff; background: transparent; font-size: 22px; cursor: pointer; }
 .bell span { position: absolute; top: 16px; right: 15px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #ff2d47; color: #fff; font-size: 12px; }

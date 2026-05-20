@@ -138,7 +138,6 @@
                   <col style="width: 140px" />
                   <col style="width: 160px" />
                   <col style="width: 110px" />
-                  <col style="width: 120px" />
                 </colgroup>
 
                 <thead>
@@ -147,16 +146,15 @@
                     <th>설비명</th>
                     <th>알람 유형</th>
                     <th>상태</th>
-                    <th>담당자</th>
                   </tr>
                 </thead>
 
                 <tbody>
                   <tr v-if="loading">
-                    <td colspan="5">알람 목록을 불러오는 중입니다.</td>
+                    <td colspan="4">알람 목록을 불러오는 중입니다.</td>
                   </tr>
                   <tr v-else-if="alarmRows.length === 0">
-                    <td colspan="5">표시할 알람이 없습니다.</td>
+                    <td colspan="4">표시할 알람이 없습니다.</td>
                   </tr>
                   <template v-else>
                     <tr
@@ -173,7 +171,6 @@
                           {{ row.stateLabel }}
                         </span>
                       </td>
-                      <td>{{ row.manager }}</td>
                     </tr>
                   </template>
                 </tbody>
