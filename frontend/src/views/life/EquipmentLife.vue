@@ -1,7 +1,10 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { Client } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
 import AppTopbar from '@/components/AppTopbar.vue'
+import { getEquipmentStatus } from '@/api/dashboard'
 
 const router = useRouter()
 const searchQuery = ref('')
@@ -11,6 +14,7 @@ const viewMode = ref('card')
 const rowsPerPage = ref(10)
 const currentPage = ref(1)
 const selectedId = ref('PLF-001')
+const isLoading = ref(true)
 
 const equipmentDefs = [
   { code: 'PLF', type: '패널 투입 장치', icon: '🏗️', manufacturer: '현대자동화' },
@@ -28,6 +32,9 @@ const statusPool = [
   { status: 'idle', statusLabel: '대기' },
   { status: 'stop', statusLabel: '정지' },
 ]
+
+const STATUS_MAP = { RUN: 'running', STOP: 'stop', IDLE: 'idle', ALARM: 'stop' }
+const STATUS_LABEL_MAP = { RUN: '가동', STOP: '정지', IDLE: '대기', ALARM: '알람' }
 
 const buildEquipmentList = () => {
   const list = []
@@ -70,7 +77,7 @@ const buildEquipmentList = () => {
   return list
 }
 
-const equipmentList = buildEquipmentList()
+const equipmentList = ref(buildEquipmentList())
 
 const recentAlarms = [
   { title: 'PLF-001 투입 센서 이상', time: '2024-05-24 10:15', level: 'warning', label: '경고' },
@@ -78,6 +85,57 @@ const recentAlarms = [
   { title: 'ROB-003 축 구동 오류', time: '2024-05-24 08:21', level: 'danger', label: '위험' },
   { title: 'VSI-001 비전 통신 지연', time: '2024-05-24 07:58', level: 'warning', label: '경고' },
 ]
+
+const refreshEquipments = async () => {
+  try {
+    const data = await getEquipmentStatus()
+    if (!Array.isArray(data)) return
+
+    equipmentList.value = equipmentList.value.map((item) => {
+      const remote = data.find(
+        (e) => (e.equipmentId ?? e.equipment_id) === item.id,
+      )
+      if (!remote) return item
+
+      const rawStatus = remote.status ?? remote.currentStatus
+      return {
+        ...item,
+        status: STATUS_MAP[rawStatus] ?? item.status,
+        statusLabel: STATUS_LABEL_MAP[rawStatus] ?? item.statusLabel,
+        life: remote.healthScore != null ? Math.round(remote.healthScore) : item.life,
+        lastUpdate: remote.lastUpdate ?? remote.updatedAt ?? item.lastUpdate,
+      }
+    })
+  } catch {
+    // 백엔드 미연결 시 기존 목업 유지
+  }
+}
+
+let stompClient = null
+
+onMounted(async () => {
+  await refreshEquipments()
+  isLoading.value = false
+
+  stompClient = new Client({
+    webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+    onConnect: () => {
+      stompClient.subscribe('/topic/dashboard/summary', () => {
+        refreshEquipments()
+      })
+    },
+    onStompError: (frame) => {
+      console.error('STOMP 오류:', frame)
+    },
+    reconnectDelay: 5000,
+  })
+  stompClient.activate()
+})
+
+onUnmounted(() => {
+  stompClient?.deactivate()
+  stompClient = null
+})
 
 const matchesSearch = (item, query) => {
   if (!query) return true
@@ -105,14 +163,14 @@ const sortEquipment = (items) => {
 
 const filteredEquipment = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
-  const filtered = equipmentList.filter(
+  const filtered = equipmentList.value.filter(
     (item) => matchesSearch(item, query) && matchesLine(item, selectedLine.value),
   )
   return sortEquipment(filtered)
 })
 
 const selectedEquipment = computed(
-  () => equipmentList.find((e) => e.id === selectedId.value) ?? equipmentList[0],
+  () => equipmentList.value.find((e) => e.id === selectedId.value) ?? equipmentList.value[0],
 )
 
 const totalPages = computed(() =>
@@ -211,38 +269,61 @@ const isUrgentDate = (date) => date <= '2024-09-30'
             </div>
 
             <div v-if="viewMode === 'card'" class="equipment-scroll">
-              <div v-if="filteredEquipment.length === 0" class="empty-state">
-                검색 결과가 없습니다.
-              </div>
-              <div v-else class="equipment-grid">
-                <article
-                  v-for="item in filteredEquipment"
-                  :key="item.id"
-                  class="equip-card"
-                  :class="{ selected: selectedId === item.id }"
-                  @click="selectEquipment(item.id)"
-                >
+              <div v-if="isLoading" class="equipment-grid">
+                <div v-for="n in 8" :key="n" class="equip-card skeleton-card">
                   <div class="card-top">
-                    <span class="card-icon">{{ item.icon }}</span>
+                    <div class="skel skel-icon"></div>
                     <div class="card-title">
-                      <strong>{{ item.name }}</strong>
-                      <span>{{ item.type }}</span>
+                      <div class="skel skel-name"></div>
+                      <div class="skel skel-type"></div>
                     </div>
-                    <span class="status-badge" :class="item.status">{{ item.statusLabel }}</span>
+                    <div class="skel skel-badge"></div>
                   </div>
                   <div class="card-life">
-                    <span class="life-label">잔존 수명</span>
-                    <strong class="life-value" :class="lifeColor(item.life)">{{ item.life }}%</strong>
-                    <div class="battery-bar">
-                      <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
-                    </div>
+                    <div class="skel skel-life-label"></div>
+                    <div class="skel skel-life-value"></div>
+                    <div class="skel skel-bar"></div>
                   </div>
                   <div class="card-footer">
-                    <span>예상 교체 시기</span>
-                    <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
+                    <div class="skel skel-footer-item"></div>
+                    <div class="skel skel-footer-item"></div>
                   </div>
-                </article>
+                </div>
               </div>
+              <template v-else>
+                <div v-if="filteredEquipment.length === 0" class="empty-state">
+                  검색 결과가 없습니다.
+                </div>
+                <div v-else class="equipment-grid">
+                  <article
+                    v-for="item in filteredEquipment"
+                    :key="item.id"
+                    class="equip-card"
+                    :class="{ selected: selectedId === item.id }"
+                    @click="selectEquipment(item.id)"
+                  >
+                    <div class="card-top">
+                      <span class="card-icon">{{ item.icon }}</span>
+                      <div class="card-title">
+                        <strong>{{ item.name }}</strong>
+                        <span>{{ item.type }}</span>
+                      </div>
+                      <span class="status-badge" :class="item.status">{{ item.statusLabel }}</span>
+                    </div>
+                    <div class="card-life">
+                      <span class="life-label">잔존 수명</span>
+                      <strong class="life-value" :class="lifeColor(item.life)">{{ item.life }}%</strong>
+                      <div class="battery-bar">
+                        <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
+                      </div>
+                    </div>
+                    <div class="card-footer">
+                      <span>예상 교체 시기</span>
+                      <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
+                    </div>
+                  </article>
+                </div>
+              </template>
             </div>
 
             <div v-else class="list-view">
@@ -259,28 +340,40 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="filteredEquipment.length === 0">
-                      <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
-                    </tr>
-                    <tr
-                      v-for="row in pagedTableRows"
-                      :key="row.id"
-                      :class="{ selected: selectedId === row.id }"
-                      @click="selectEquipment(row.id)"
-                    >
-                      <td class="name-cell">{{ row.name }}</td>
-                      <td>{{ row.line }}</td>
-                      <td>{{ row.type }}</td>
-                      <td>
-                        <i class="status-dot" :class="row.status"></i>
-                        {{ row.statusLabel }}
-                      </td>
-                      <td class="life-cell">
-                        <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
-                        <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
-                      </td>
-                      <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
-                    </tr>
+                    <template v-if="isLoading">
+                      <tr v-for="n in rowsPerPage" :key="n">
+                        <td><div class="skel skel-td"></div></td>
+                        <td><div class="skel skel-td"></div></td>
+                        <td><div class="skel skel-td"></div></td>
+                        <td><div class="skel skel-td-sm"></div></td>
+                        <td><div class="skel skel-td"></div></td>
+                        <td><div class="skel skel-td"></div></td>
+                      </tr>
+                    </template>
+                    <template v-else>
+                      <tr v-if="filteredEquipment.length === 0">
+                        <td colspan="6" class="empty-row">검색 결과가 없습니다.</td>
+                      </tr>
+                      <tr
+                        v-for="row in pagedTableRows"
+                        :key="row.id"
+                        :class="{ selected: selectedId === row.id }"
+                        @click="selectEquipment(row.id)"
+                      >
+                        <td class="name-cell">{{ row.name }}</td>
+                        <td>{{ row.line }}</td>
+                        <td>{{ row.type }}</td>
+                        <td>
+                          <i class="status-dot" :class="row.status"></i>
+                          {{ row.statusLabel }}
+                        </td>
+                        <td class="life-cell">
+                          <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
+                          <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
+                        </td>
+                        <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
+                      </tr>
+                    </template>
                   </tbody>
                 </table>
               </div>
@@ -1070,5 +1163,80 @@ h2 {
   .life-page {
     min-width: 1100px;
   }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.skel {
+  background: linear-gradient(90deg, #e8edf4 25%, #f0f4f9 50%, #e8edf4 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 4px;
+}
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skel-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.skel-name {
+  height: 14px;
+  width: 70%;
+  margin-bottom: 6px;
+}
+
+.skel-type {
+  height: 11px;
+  width: 50%;
+}
+
+.skel-badge {
+  width: 44px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.skel-life-label {
+  height: 11px;
+  width: 48px;
+  margin-bottom: 6px;
+}
+
+.skel-life-value {
+  height: 32px;
+  width: 64px;
+  margin-bottom: 10px;
+}
+
+.skel-bar {
+  height: 10px;
+  width: 100%;
+}
+
+.skel-footer-item {
+  height: 12px;
+  width: 45%;
+}
+
+.skel-td {
+  height: 14px;
+  width: 80%;
+  margin: 0 auto;
+}
+
+.skel-td-sm {
+  height: 14px;
+  width: 48px;
+  margin: 0 auto;
 }
 </style>
