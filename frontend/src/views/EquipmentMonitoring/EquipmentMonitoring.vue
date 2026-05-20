@@ -648,7 +648,7 @@ const confirmConveyorFrequency = () => {
 
   const nextFrequency = Number(frequencyDraft.value)
   if (!Number.isFinite(nextFrequency)) return
-  conveyorControls[id].frequency = Math.max(nextFrequency, 0)
+  conveyorControls[id].frequency = Math.max(nextFrequency, 1)
 }
 
 const setConveyorRotationState = (id, rotating) => {
@@ -744,7 +744,7 @@ const turnOffConveyor = async () => {
   try {
     const res = await fetchWithTimeout(
       `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/off`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      { method: 'POST', headers: authHeaders() },
       5000,
     )
     const body = await safeParseJson(res)
