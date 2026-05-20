@@ -172,7 +172,7 @@
               <div><dt>마지막 업데이트</dt><dd>{{ currentEquipmentLastUpdate }}</dd></div>
             </dl>
 
-            <div v-if="isConveyorSelected" class="inverter-control">
+            <div v-if="isConveyorSelected" class="inverter-control" :class="{ locked: !isConveyorControlSupported }">
               <div class="control-header">
                 <h4>인버터 제어</h4>
                 <span>{{ controlStatusText }}</span>
@@ -452,6 +452,20 @@ const authHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+const fetchWithTimeout = async (url, options = {}, timeoutMs = 5000) => {
+  const controller = new AbortController()
+  const tid = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(tid)
+  }
+}
+
+const safeParseJson = async (res) => {
+  try { return await res.json() } catch { return null }
+}
+
 const parsePayload = (buffer) => {
   try {
     const parsed = JSON.parse(buffer.toString())
@@ -607,11 +621,13 @@ const selectEquipmentRow = (row) => {
 }
 
 const goToEquipmentDetail = () => {
-  router.push('/equipment-detail')
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  router.push({ name: 'equipment-detail', query: id ? { id } : {} })
 }
 
 const goToAlarmPage = () => {
-  router.push('/equipment-alarm')
+  const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
+  router.push({ name: 'equipment-alarm', query: id ? { equipmentId: id } : {} })
 }
 
 const isConveyorSelected = computed(() => selectedEquipment.value?.layoutType === 'cnv')
@@ -662,16 +678,20 @@ const fetchConveyorControlStatus = async (equipmentId) => {
 
   try {
     controlStatusText.value = '상태 확인 중'
-    const res = await fetch(`${API_BASE}/api/equipments/${encodeURIComponent(equipmentId)}/control/status`, {
-      headers: authHeaders(),
-    })
-    const body = await res.json()
-    if (!res.ok || !body?.success) throw new Error(body?.message ?? 'Control status request failed')
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(equipmentId)}/control/status`,
+      { headers: authHeaders() },
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
 
-    applyControlStatus(equipmentId, body.data)
+    // success 필드 없어도 data가 있으면 적용 (Node-RED 응답 포맷 유연 처리)
+    const data = body?.data ?? body
+    if (data) applyControlStatus(equipmentId, data)
     controlStatusText.value = 'API 연결'
   } catch (err) {
-    controlStatusText.value = '백엔드 연결 실패'
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃' : '백엔드 연결 실패'
     console.warn('Failed to fetch conveyor control status:', err)
   }
 }
@@ -685,24 +705,26 @@ const turnOnConveyor = async () => {
   }
 
   confirmConveyorFrequency()
+  // 낙관적 업데이트: API 응답과 무관하게 즉시 UI 반영
+  setConveyorRotationState(id, true)
+  controlStatusText.value = '회전 명령 전송 중'
 
   try {
-    controlStatusText.value = '회전 명령 전송 중'
-    const res = await fetch(`${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/on`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(),
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/on`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ frequency: conveyorControls[id].frequency }),
       },
-      body: JSON.stringify({ frequency: conveyorControls[id].frequency }),
-    })
-    const body = await res.json()
-    if (!res.ok || !body?.success) throw new Error(body?.message ?? 'Control on request failed')
-
-    setConveyorRotationState(id, true)
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
     controlStatusText.value = '회전 명령 완료'
   } catch (err) {
-    controlStatusText.value = '회전 명령 실패'
+    // 타임아웃이나 네트워크 에러여도 Node-RED가 이미 명령을 받았을 수 있으므로 로컬 상태 유지
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '회전 명령 실패 (로컬 적용)'
     console.warn('Failed to turn on conveyor:', err)
   }
 }
@@ -715,19 +737,21 @@ const turnOffConveyor = async () => {
     return
   }
 
-  try {
-    controlStatusText.value = '정지 명령 전송 중'
-    const res = await fetch(`${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/off`, {
-      method: 'POST',
-      headers: authHeaders(),
-    })
-    const body = await res.json()
-    if (!res.ok || !body?.success) throw new Error(body?.message ?? 'Control off request failed')
+  // 낙관적 업데이트
+  setConveyorRotationState(id, false)
+  controlStatusText.value = '정지 명령 전송 중'
 
-    setConveyorRotationState(id, false)
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/off`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      5000,
+    )
+    const body = await safeParseJson(res)
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
     controlStatusText.value = '정지 명령 완료'
   } catch (err) {
-    controlStatusText.value = '정지 명령 실패'
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '정지 명령 실패 (로컬 적용)'
     console.warn('Failed to turn off conveyor:', err)
   }
 }
@@ -848,9 +872,16 @@ const normalizeAlarmLevel = (status) => {
   return alarmLevelMap[String(status ?? '').trim().toUpperCase()] ?? 'warning'
 }
 
+const isFullEquipmentId = (id) => /^[A-Z]+-\d{3}$/i.test(id)
+
 const applyAlarmPayload = (payload, topic) => {
-  const equipmentId = String(payload?.equipment_id ?? parseTopicEquipmentId(topic, 'alarm')).trim()
-  if (!equipmentId) return
+  const rawId = String(payload?.equipment_id ?? '').trim()
+  const topicId = parseTopicEquipmentId(topic, 'alarm')
+  // CODE-NNN 형식(예: CNV-001)인 ID를 우선 사용 — prefix만 있는 ID는 무시하여 오필터링 방지
+  const equipmentId = isFullEquipmentId(rawId) ? rawId
+    : isFullEquipmentId(topicId) ? topicId
+    : (rawId || topicId)
+  if (!equipmentId || !isFullEquipmentId(equipmentId)) return
 
   const level = normalizeAlarmLevel(payload.alarm_status)
   const nextAlarm = {
@@ -2031,11 +2062,32 @@ tbody tr {
 }
 
 .inverter-control {
+  position: relative;
   margin: 0 0 16px;
   padding: 12px;
   border: 1px solid #dfe8f4;
   border-radius: 10px;
   background: #f8fbff;
+}
+
+.inverter-control.locked {
+  pointer-events: none;
+  user-select: none;
+}
+
+.inverter-control.locked::after {
+  content: '🔒 CNV-001 전용 제어 영역';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(190, 205, 225, 0.78);
+  color: #3a4a5e;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0.02em;
 }
 
 .control-header {
