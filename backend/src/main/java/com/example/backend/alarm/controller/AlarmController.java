@@ -57,9 +57,12 @@ public class AlarmController {
 		return new ApiResponse<>(true, "alarm created", alarmService.createAlarm(request));
 	}
 
-	@GetMapping("/statistics")
-	public ApiResponse<AlarmStatisticsResponse> getStatistics(@RequestParam(defaultValue = "DAY") String period) {
-		return new ApiResponse<>(true, "alarm statistics", alarmService.statistics(period));
+	@GetMapping("/{equipmentId}/statistics")
+	public ApiResponse<AlarmStatisticsResponse> getStatistics(
+		@PathVariable String equipmentId,
+		@RequestParam(defaultValue = "DAY") String period
+	) {
+		return new ApiResponse<>(true, "alarm statistics", alarmService.statistics(equipmentId, period));
 	}
 
 	@GetMapping("/log")

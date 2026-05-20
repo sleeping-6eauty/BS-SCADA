@@ -35,7 +35,7 @@ class BackendApplicationTests {
 			.andExpect(jsonPath("$.data[0].alarmId").exists())
 			.andExpect(jsonPath("$.meta.totalElements").value(8));
 
-		mockMvc.perform(get("/api/alarms/statistics")
+		mockMvc.perform(get("/api/alarms/RBT-A1/statistics")
 				.param("period", "DAY"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.success").value(true))

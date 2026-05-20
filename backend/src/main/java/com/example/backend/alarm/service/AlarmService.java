@@ -121,14 +121,14 @@ public class AlarmService {
 		return pageFallback(filtered, page, size);
 	}
 
-	public AlarmStatisticsResponse statistics(String period) {
+	public AlarmStatisticsResponse statistics(String equipmentId, String period) {
 		String normalized = normalizePeriod(period);
 
 		if (alarmMapper != null) {
 			List<AlarmStatisticsItem> items = switch (normalized) {
-				case "DAY" -> alarmMapper.countByDay();
-				case "WEEK" -> alarmMapper.countByWeek();
-				case "MONTH" -> alarmMapper.countByMonth();
+				case "DAY" -> alarmMapper.countByDay(equipmentId);
+				case "WEEK" -> alarmMapper.countByWeek(equipmentId);
+				case "MONTH" -> alarmMapper.countByMonth(equipmentId);
 				default -> throw new IllegalArgumentException("period must be one of DAY, WEEK, MONTH");
 			};
 			return new AlarmStatisticsResponse(normalized, items);
@@ -144,6 +144,7 @@ public class AlarmService {
 		};
 
 		Map<String, Long> counts = fallbackAlarms.values().stream()
+			.filter(alarm -> matchesEquipment(alarm, equipmentId))
 			.collect(Collectors.groupingBy(classifier, LinkedHashMap::new, Collectors.counting()));
 
 		List<AlarmStatisticsItem> items = counts.entrySet().stream()
