@@ -54,7 +54,7 @@ async function handleLogin() {
       <div class="brand-bg" :style="{ backgroundImage: `url(${loginBgSrc})` }" aria-hidden="true"></div>
       <div class="brand-copy">
         <img class="brand-logo-left" :src="loginLeftLogoSrc" alt="로그인 로고" aria-hidden="true" />
-        <h1>설비 알람 관리 시스템</h1>
+        <h1>FactoryEye</h1>
         <p>실시간 모니터링으로 설비의 안정성과 효율성을 높입니다.</p>
       </div>
     </section>
