@@ -9,32 +9,39 @@
     </div>
 
     <div class="alarm-list">
-      <div
-        v-for="alarm in alarms"
-        :key="alarm.id"
-        class="alarm-item"
-      >
-        <div class="alarm-left">
-          <div class="icon-wrapper" :class="alarm.level">
-            <span class="alarm-icon">
-              {{ alarm.icon }}
-            </span>
-          </div>
-
-          <div class="alarm-content">
-            <h4>{{ alarm.title }}</h4>
-            <p>{{ alarm.location }}</p>
-            <span>{{ alarm.time }}</span>
-          </div>
-        </div>
-
-        <div
-          class="alarm-badge"
-          :class="alarm.level"
-        >
-          {{ alarm.levelText }}
-        </div>
+      <div v-if="loading" class="alarm-empty">
+        알람을 불러오는 중입니다.
       </div>
+
+      <div v-else-if="errorMessage" class="alarm-empty error">
+        {{ errorMessage }}
+      </div>
+
+      <div v-else-if="alarms.length === 0" class="alarm-empty">
+        담당 설비 알람이 없습니다.
+      </div>
+
+      <template v-else>
+        <div
+          v-for="alarm in alarms"
+          :key="alarm.id"
+          class="alarm-item"
+        >
+          <div class="alarm-left">
+            <div class="alarm-content">
+              <h4>{{ alarm.title }}</h4>
+              <span>{{ alarm.time }}</span>
+            </div>
+          </div>
+
+          <div
+            class="alarm-badge"
+            :class="alarm.level"
+          >
+            {{ alarm.levelText }}
+          </div>
+        </div>
+      </template>
     </div>
 
     <button class="view-all-btn">
@@ -44,44 +51,115 @@
 </template>
 
 <script setup>
-const alarms = [
-  {
-    id: 1,
-    title: '용접기1 - 모터 과열',
-    location: 'Zone A - Line 1',
-    time: '2024-05-24 10:25:33',
-    level: 'high',
-    levelText: 'High',
-    icon: '🚨',
-  },
-  {
-    id: 2,
-    title: 'Nutrunner B4 - 토크 이상',
-    location: 'Zone B - Line 2',
-    time: '2024-05-24 09:42:17',
-    level: 'medium',
-    levelText: 'Medium',
-    icon: '⚠',
-  },
-  {
-    id: 3,
-    title: 'Conveyor C2 - 센서 불량',
-    location: 'Zone C - Line 3',
-    time: '2024-05-24 09:15:08',
-    level: 'medium',
-    levelText: 'Medium',
-    icon: '⚠',
-  },
-  {
-    id: 4,
-    title: 'AGV D1 - 배터리 경고',
-    location: 'Zone D - Line 4',
-    time: '2024-05-24 08:55:21',
-    level: 'low',
-    levelText: 'Low',
-    icon: 'ⓘ',
-  },
-]
+import { onMounted, ref } from 'vue'
+import { getAlarmLog, getMyEquipments } from '@/api/alarm.js'
+
+const alarms = ref([])
+const loading = ref(false)
+const errorMessage = ref('')
+
+const asArray = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.items)) return payload.items
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.rows)) return payload.rows
+  if (Array.isArray(payload?.list)) return payload.list
+  return []
+}
+
+const pick = (obj, keys, fallback = '-') => {
+  for (const key of keys) {
+    if (obj?.[key] !== undefined && obj?.[key] !== null && obj?.[key] !== '') return obj[key]
+  }
+  return fallback
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).replace(/\. /g, '-').replace('.', '')
+}
+
+const normalizeStatusValue = (status) => {
+  const text = String(status ?? '').trim()
+  const normalized = text.toUpperCase()
+  if (['OPEN', '미조치', 'UNRESOLVED'].includes(normalized)) return 'OPEN'
+  if (['IN_PROGRESS', '조치중', 'PROGRESS'].includes(normalized)) return 'IN_PROGRESS'
+  if (['RESOLVED', '완료', 'DONE', 'CLOSED'].includes(normalized)) return 'RESOLVED'
+  return text || '-'
+}
+
+const getStatusLabel = (status) => {
+  const normalized = normalizeStatusValue(status)
+  if (normalized === 'OPEN') return '미조치'
+  if (normalized === 'IN_PROGRESS') return '조치중'
+  if (normalized === 'RESOLVED') return '완료'
+  return normalized
+}
+
+const getStatusClass = (status) => {
+  const normalized = normalizeStatusValue(status)
+  if (normalized === 'OPEN') return 'high'
+  if (normalized === 'IN_PROGRESS') return 'progress'
+  if (normalized === 'RESOLVED') return 'done'
+  return 'done'
+}
+
+const normalizeAlarm = (row) => {
+  const equipmentId = String(pick(row, ['equipment_id', 'equipmentId'], ''))
+  const alarmType = String(pick(row, ['alarm_type', 'alarmType', 'type'], '-'))
+  const alarmStatus = String(pick(row, ['alarm_status', 'alarmStatus', 'status'], '-'))
+  const alarmTime = pick(row, ['timestamp', 'created_at', 'createdAt', 'time'], '')
+
+  return {
+    id: String(pick(row, ['alarm_id', 'alarmId', 'id', 'log_id', 'logId'], `${equipmentId}-${alarmTime}-${alarmType}`)),
+    equipmentId,
+    title: `${equipmentId || '-'} - ${alarmType}`,
+    time: formatDateTime(alarmTime),
+    level: getStatusClass(alarmStatus),
+    levelText: getStatusLabel(alarmStatus),
+  }
+}
+
+const normalizeEquipmentId = (item) =>
+  String(pick(item, ['equipment_id', 'equipmentId', 'id'], '')).trim()
+
+const loadMyAlarmLogs = async () => {
+  loading.value = true
+  errorMessage.value = ''
+
+  try {
+    const [alarmPayload, equipmentPayload] = await Promise.all([
+      getAlarmLog(),
+      getMyEquipments(),
+    ])
+
+    const assignedEquipmentIds = new Set(
+      asArray(equipmentPayload)
+        .map(normalizeEquipmentId)
+        .filter(Boolean)
+    )
+
+    alarms.value = asArray(alarmPayload)
+      .map(normalizeAlarm)
+      .filter((alarm) => assignedEquipmentIds.has(alarm.equipmentId))
+  } catch (err) {
+    errorMessage.value = err.message || '담당 설비 알람을 불러오지 못했습니다.'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(loadMyAlarmLogs)
 </script>
 
 <style scoped>
@@ -126,9 +204,24 @@ const alarms = [
   display: flex;
   flex-direction: column;
   gap: 0;
-  overflow: hidden;
+  max-height: 460px;
+  overflow-y: auto;
   border-radius: 16px;
   border: 1px solid #eef2f7;
+}
+
+.alarm-empty {
+  padding: 24px 20px;
+  background: #fff;
+  color: #506080;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.alarm-empty.error {
+  color: #dc2626;
+  background: #fff5f5;
 }
 
 .alarm-item {
@@ -146,33 +239,8 @@ const alarms = [
 
 .alarm-left {
   display: flex;
-  gap: 18px;
-}
-
-.icon-wrapper {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.icon-wrapper.high {
-  background: #fff1f1;
-}
-
-.icon-wrapper.medium {
-  background: #fff8ea;
-}
-
-.icon-wrapper.low {
-  background: #eef5ff;
-}
-
-.alarm-icon {
-  font-size: 20px;
+  min-width: 0;
+  flex: 1;
 }
 
 .alarm-content h4 {
@@ -181,6 +249,7 @@ const alarms = [
   font-weight: 800;
   color: #162044;
   line-height: 1.3;
+  word-break: break-word;
 }
 
 .alarm-content p {
@@ -197,7 +266,7 @@ const alarms = [
 }
 
 .alarm-badge {
-  min-width: 60px;
+  min-width: max-content;
   height: 28px;
   padding: 0 10px;
   border-radius: 8px;
@@ -207,6 +276,8 @@ const alarms = [
   align-items: center;
   justify-content: center;
   margin-left: 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .alarm-badge.high {
@@ -215,16 +286,16 @@ const alarms = [
   border: 1px solid #ffd4d4;
 }
 
-.alarm-badge.medium {
+.alarm-badge.progress {
   color: #f59e0b;
   background: #fff8ea;
   border: 1px solid #ffe3a6;
 }
 
-.alarm-badge.low {
-  color: #3b82f6;
-  background: #eef5ff;
-  border: 1px solid #cfe1ff;
+.alarm-badge.done {
+  color: #15803d;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
 }
 
 .view-all-btn {

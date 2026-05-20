@@ -125,8 +125,8 @@ async function handleLogin() {
   --line: #d9e2ef;
   --muted: #7584a3;
   display: grid;
-  grid-template-columns: minmax(500px, 39.5vw) 1fr;
-  min-width: 1180px;
+  grid-template-columns: minmax(380px, 36vw) minmax(0, 1fr);
+  min-width: 0;
   min-height: 100vh;
   background: #f7f9fd;
   color: #0b1b46;
@@ -138,7 +138,7 @@ async function handleLogin() {
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
-  padding: 112px 58px 54px;
+  padding: clamp(46px, 7vh, 78px) clamp(34px, 4vw, 52px) 44px;
   color: #fff;
   background:
     radial-gradient(circle at 28% 42%, rgba(16, 104, 214, 0.42), transparent 31%),
@@ -180,17 +180,17 @@ async function handleLogin() {
 .brand-copy {
   position: relative;
   z-index: 1;
-  margin-bottom: 42px;
+  margin-bottom: 28px;
   text-align: center;
 }
 
 .brand-logo-left,
 .brand-logo-right {
-  width: 92px;
+  width: clamp(66px, 7vw, 82px);
   height: auto;
   object-fit: contain;
   display: block;
-  margin: 0 auto 24px;
+  margin: 0 auto 18px;
 }
 
 .password-wrap {
@@ -246,8 +246,8 @@ async function handleLogin() {
 }
 
 .brand-copy h1 {
-  margin: 26px 0 18px;
-  font-size: 38px;
+  margin: 18px 0 12px;
+  font-size: clamp(28px, 2.6vw, 34px);
   font-weight: 950;
   letter-spacing: 0;
 }
@@ -255,7 +255,7 @@ async function handleLogin() {
 .brand-copy p {
   margin: 0;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 20px;
+  font-size: clamp(16px, 1.45vw, 18px);
   font-weight: 650;
 }
 
@@ -354,7 +354,7 @@ async function handleLogin() {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 46px 64px 72px;
+  padding: clamp(26px, 4vh, 42px) clamp(32px, 5vw, 56px) 58px;
 }
 
 .chevron,
@@ -380,9 +380,8 @@ async function handleLogin() {
 }
 
 .auth-card {
-  width: min(780px, 100%);
-  min-height: 660px;
-  padding: 82px 74px 72px;
+  width: min(560px, 100%);
+  padding: clamp(36px, 5.8vh, 54px) clamp(42px, 5vw, 56px) clamp(34px, 5vh, 48px);
   border: 1px solid #dfe6f1;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.88);
@@ -390,13 +389,13 @@ async function handleLogin() {
 }
 
 .form-heading {
-  margin-bottom: 54px;
+  margin-bottom: 34px;
   text-align: center;
 }
 
 .form-heading h2 {
-  margin: 24px 0 12px;
-  font-size: 34px;
+  margin: 16px 0 8px;
+  font-size: clamp(28px, 2.5vw, 32px);
   font-weight: 950;
   letter-spacing: 0;
   color: #071b54;
@@ -405,24 +404,24 @@ async function handleLogin() {
 .form-heading p {
   margin: 0;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .field-label {
   display: block;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   color: #0a1b4d;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 900;
 }
 
 .input-wrap {
   display: flex;
   align-items: center;
-  height: 66px;
-  margin-bottom: 34px;
-  padding: 0 20px;
+  height: 54px;
+  margin-bottom: 22px;
+  padding: 0 16px;
   border: 1px solid #ccd7e7;
   border-radius: 9px;
   background: #fff;
@@ -441,9 +440,9 @@ async function handleLogin() {
   height: 100%;
   border: 0;
   outline: 0;
-  padding: 0 48px 0 18px;
+  padding: 0 44px 0 14px;
   color: #102653;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   background: transparent;
 }
@@ -523,13 +522,13 @@ async function handleLogin() {
 
 .primary-button {
   width: 100%;
-  height: 68px;
+  height: 56px;
   border: 0;
   border-radius: 9px;
   color: #fff;
   background: linear-gradient(180deg, #086bff, #0753dc);
   box-shadow: 0 12px 22px rgba(6, 88, 231, 0.23);
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 950;
   cursor: pointer;
 }
@@ -544,16 +543,16 @@ async function handleLogin() {
 }
 
 .auth-link {
-  margin: 38px 0 0;
+  margin: 24px 0 0;
   color: #7584a3;
   text-align: center;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
 }
 
 .copyright {
   position: absolute;
-  bottom: 34px;
+  bottom: 24px;
   margin: 0;
   color: #8492ad;
   font-size: 15px;
@@ -562,8 +561,7 @@ async function handleLogin() {
 
 @media (max-width: 1280px) {
   .auth-page {
-    min-width: 1100px;
-    grid-template-columns: 450px 1fr;
+    grid-template-columns: 390px minmax(0, 1fr);
   }
 
   .brand-panel {
@@ -572,9 +570,24 @@ async function handleLogin() {
   }
 
   .auth-card {
-    width: 650px;
-    padding-left: 58px;
-    padding-right: 58px;
+    width: 520px;
+    padding-left: 42px;
+    padding-right: 42px;
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-panel {
+    min-height: 220px;
+    padding: 34px 28px;
+  }
+
+  .form-panel {
+    padding: 28px 20px 54px;
   }
 }
 </style>

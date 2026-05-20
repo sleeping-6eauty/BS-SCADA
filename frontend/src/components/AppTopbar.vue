@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import logoImage from '@/assets/logo.png'
 import AlarmModal from '@/components/AlarmModal.vue'
+import { getAlarmLog, getMyEquipments } from '@/api/alarm.js'
 
 defineProps({
   activeMenu: {
@@ -21,6 +22,13 @@ const menuItems = [
 
 const currentTime = ref('')
 let timerId
+let alarmTimerId
+
+const API_BASE = 'http://localhost:8080'
+
+const currentUserName = ref('사용자')
+const currentUserId = ref(null)
+const openAlarmCount = ref(0)
 
 const pad = (value) => String(value).padStart(2, '0')
 
@@ -44,6 +52,9 @@ const bellWrapRef = ref(null)
 
 const toggleAlarmModal = () => {
   showAlarmModal.value = !showAlarmModal.value
+  if (showAlarmModal.value) {
+    loadOpenAlarmCount()
+  }
 }
 
 const handleClickOutside = (e) => {
@@ -52,14 +63,94 @@ const handleClickOutside = (e) => {
   }
 }
 
+const asArray = (payload) => {
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.items)) return payload.items
+  if (Array.isArray(payload?.content)) return payload.content
+  if (Array.isArray(payload?.rows)) return payload.rows
+  if (Array.isArray(payload?.list)) return payload.list
+  return []
+}
+
+const pick = (obj, keys, fallback = '') => {
+  for (const key of keys) {
+    if (obj?.[key] !== undefined && obj?.[key] !== null && obj?.[key] !== '') return obj[key]
+  }
+  return fallback
+}
+
+const normalizeId = (value) => String(value ?? '').trim()
+
+const getStoredUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}')
+  } catch {
+    return {}
+  }
+}
+
+const loadCurrentUser = async () => {
+  const storedUser = getStoredUser()
+  currentUserId.value = storedUser.id ?? null
+  currentUserName.value = storedUser.name || storedUser.username || '사용자'
+
+  const token = localStorage.getItem('token')
+  if (!token) return
+
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/me`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    const user = await res.json().catch(() => ({}))
+    if (!res.ok) return
+
+    currentUserId.value = user.userId ?? storedUser.id ?? null
+    currentUserName.value = user.name || storedUser.name || storedUser.username || '사용자'
+  } catch {
+    currentUserName.value = storedUser.name || storedUser.username || '사용자'
+  }
+}
+
+const loadOpenAlarmCount = async () => {
+  try {
+    const [alarmPayload, equipmentPayload] = await Promise.all([
+      getAlarmLog(),
+      getMyEquipments(),
+    ])
+
+    const assignedEquipmentIds = new Set(
+      asArray(equipmentPayload)
+        .map((item) => normalizeId(pick(item, ['equipment_id', 'equipmentId', 'id'])))
+        .filter(Boolean)
+    )
+
+    const userId = normalizeId(currentUserId.value)
+    openAlarmCount.value = asArray(alarmPayload).filter((alarm) => {
+      const equipmentId = normalizeId(pick(alarm, ['equipment_id', 'equipmentId']))
+      const status = String(pick(alarm, ['alarm_status', 'alarmStatus', 'status'])).toUpperCase()
+      const alarmUserId = normalizeId(pick(alarm, ['user_id', 'userId']))
+      const isMine = !alarmUserId || !userId || alarmUserId === userId
+      return assignedEquipmentIds.has(equipmentId) && status === 'OPEN' && isMine
+    }).length
+  } catch {
+    openAlarmCount.value = 0
+  }
+}
+
 onMounted(() => {
   updateCurrentTime()
   timerId = window.setInterval(updateCurrentTime, 1000)
+  loadCurrentUser().finally(loadOpenAlarmCount)
+  alarmTimerId = window.setInterval(loadOpenAlarmCount, 30000)
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
   window.clearInterval(timerId)
+  window.clearInterval(alarmTimerId)
   document.removeEventListener('click', handleClickOutside)
 })
 </script>
@@ -88,17 +179,19 @@ onUnmounted(() => {
 
     <div class="top-actions">
       <div class="time">◷ {{ currentTime }}</div>
-      <div class="admin">👤 관리자</div>
+      <div class="admin">👤 {{ currentUserName }}</div>
       <div class="bell-wrap" ref="bellWrapRef">
-        <button class="bell" type="button" @click="toggleAlarmModal">🔔<span>2</span></button>
+        <button class="bell" type="button" @click="toggleAlarmModal">🔔<span>{{ openAlarmCount }}</span></button>
         <AlarmModal v-if="showAlarmModal" class="alarm-modal-popup" />
       </div>
     </div>
   </header>
+  <div class="topbar-spacer" aria-hidden="true"></div>
 </template>
 
 <style scoped>
-.topbar { height: 70px; display: flex; align-items: center; background: linear-gradient(90deg, #071f49, #002e68); color: #fff; box-shadow: 0 4px 14px rgba(4, 24, 56, .2); }
+.topbar { position: fixed; top: 0; left: 0; z-index: 1000; width: 100%; height: 70px; display: flex; align-items: center; background: linear-gradient(90deg, #071f49, #002e68); color: #fff; box-shadow: 0 4px 14px rgba(4, 24, 56, .2); }
+.topbar-spacer { height: 70px; flex: 0 0 70px; }
 .brand { width: 250px; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 30px; border-right: 1px solid rgba(255,255,255,.12); font-size: 20px; font-weight: 900; white-space: nowrap; }
 .brand-logo { width: 42px; height: 42px; flex: 0 0 42px; display: block; object-fit: cover; border-radius: 12px; }
 .gnb { flex: 1; min-width: 0; display: flex; height: 100%; }
