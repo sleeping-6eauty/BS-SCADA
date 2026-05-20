@@ -40,6 +40,7 @@ public class DashboardService {
 
     @Autowired private DashboardMapper  dashboardMapper;
     @Autowired private EquipmentMapper  equipmentMapper;
+    @Autowired private MqttPublisher    mqttPublisher;
 
     // ──────────────────────────────────────────────────────────────
     //  DateTime helpers
@@ -255,7 +256,8 @@ public class DashboardService {
         Double idealCycleTime = dashboardMapper.getIdealCycleTime(lineNo);
         double ict = idealCycleTime != null ? idealCycleTime : 0.0;
 
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downTimeSec1 = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downTimeSec1) / plannedTimeSec)) : 1.0;
         double performance  = runTimeSec > 0 ? Math.min(1.0, (ict * totalCount) / runTimeSec) : 0.0;
         double quality      = totalCount  > 0 ? (double) goodCount / totalCount : 0.0;
         double oee          = availability * performance * quality;
@@ -298,7 +300,8 @@ public class DashboardService {
         long stopTimeSec  = toLong(durations.get("stop_time_sec"));
         long alarmTimeSec = toLong(durations.get("alarm_time_sec"));
 
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downTimeSec2 = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downTimeSec2) / plannedTimeSec)) : 1.0;
 
         // MTTF / MTTR / MTBF — 최근 7일 rolling 기준
         int  failureCount7d   = dashboardMapper.getFailureCount7d(equipmentId);
@@ -339,6 +342,16 @@ public class DashboardService {
 
         dashboardMapper.updateEquipmentMetrics(equipmentId, healthScore, accumulatedRunHours,
                 remainingLife, replacementDate);
+
+        mqttPublisher.publish(
+                "factory/equipment/" + equipmentId + "/mt",
+                Map.of(
+                        "equipmentId", equipmentId,
+                        "mttfSec",     mttfSec,
+                        "mttrSec",     mttrSec,
+                        "mtbfSec",     mtbfSec,
+                        "timestamp",   fmt(LocalDateTime.now())
+                ));
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -372,7 +385,8 @@ public class DashboardService {
         Double idealCycleTime = dashboardMapper.getIdealCycleTime(lineNo);
         double ict = idealCycleTime != null ? idealCycleTime : 0.0;
 
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downTimeSec3 = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downTimeSec3) / plannedTimeSec)) : 1.0;
         double performance  = runTimeSec > 0 ? Math.min(1.0, (ict * totalCount) / runTimeSec) : 0.0;
         double quality      = totalCount  > 0 ? (double) goodCount / totalCount : 0.0;
 
@@ -427,8 +441,11 @@ public class DashboardService {
         LocalDateTime to      = LocalDateTime.parse(toMysql,   MYSQL_FMT);
         long plannedTimeSec   = ChronoUnit.SECONDS.between(from, to);
 
-        Map<String, Object> durations     = dashboardMapper.getStatusDurations(conveyorId, fromMysql, toMysql);
-        long runTimeSec                   = toLong(durations.get("run_time_sec"));
+        Map<String, Object> durations = dashboardMapper.getStatusDurations(conveyorId, fromMysql, toMysql);
+        long runTimeSec   = toLong(durations.get("run_time_sec"));
+        long idleTimeSec  = toLong(durations.get("idle_time_sec"));
+        long stopTimeSec  = toLong(durations.get("stop_time_sec"));
+        long alarmTimeSec = toLong(durations.get("alarm_time_sec"));
 
         Map<String, Object> qualityCounts = dashboardMapper.getVisionQualityCounts(lineNo, fromMysql, toMysql);
         long totalCount = toLong(qualityCounts.get("total_count"));
@@ -437,7 +454,8 @@ public class DashboardService {
         Double idealCycleTime = dashboardMapper.getIdealCycleTime(lineNo);
         double ict = idealCycleTime != null ? idealCycleTime : 0.0;
 
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downTimeSec4 = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downTimeSec4) / plannedTimeSec)) : 1.0;
         double performance  = runTimeSec > 0 ? Math.min(1.0, (ict * totalCount) / runTimeSec) : 0.0;
         double quality      = totalCount  > 0 ? (double) goodCount / totalCount : 0.0;
 

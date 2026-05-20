@@ -111,11 +111,14 @@ public class EquipmentMetricController {
         long plannedTimeSec = ChronoUnit.SECONDS.between(fromDt, toDt);
 
         java.util.Map<String, Object> durations = dashboardMapper.getStatusDurations(equipmentId, fromMysql, toMysql);
-        long runTimeSec = toLong(durations.get("run_time_sec"));
+        long runTimeSec   = toLong(durations.get("run_time_sec"));
+        long idleTimeSec  = toLong(durations.get("idle_time_sec"));
+        long stopTimeSec  = toLong(durations.get("stop_time_sec"));
         long alarmTimeSec = toLong(durations.get("alarm_time_sec"));
 
         int failureCount = dashboardMapper.getEquipmentFailureCount(equipmentId, fromMysql, toMysql);
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downTimeSec = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downTimeSec) / plannedTimeSec)) : 1.0;
         long mttfSec = failureCount > 0 ? runTimeSec / failureCount : 0;
         long mttrSec = failureCount > 0 ? alarmTimeSec / failureCount : 0;
         long mtbfSec = mttfSec + mttrSec;
@@ -254,7 +257,8 @@ public class EquipmentMetricController {
         long alarmTimeSec = toLong(durations.get("alarm_time_sec"));
 
         int failureCount = dashboardMapper.getEquipmentFailureCount(equipmentId, fromMysql, toMysql);
-        double availability = plannedTimeSec > 0 ? (double) runTimeSec / plannedTimeSec : 0.0;
+        double downSec2 = idleTimeSec + stopTimeSec + alarmTimeSec;
+        double availability = plannedTimeSec > 0 ? Math.max(0.0, Math.min(1.0, (double)(plannedTimeSec - downSec2) / plannedTimeSec)) : 1.0;
         long mttfSec = failureCount > 0 ? runTimeSec / failureCount : 0;
         long mttrSec = failureCount > 0 ? alarmTimeSec / failureCount : 0;
         long mtbfSec = mttfSec + mttrSec;
