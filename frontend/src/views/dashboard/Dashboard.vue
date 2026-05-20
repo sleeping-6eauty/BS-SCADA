@@ -50,6 +50,7 @@ const normalizeStatus = (status) => {
   if (normalized === 'RUN') return 'RUN'
   if (normalized === 'STOP') return 'STOP'
   if (normalized === 'ALARM') return 'ALARM'
+  if (normalized === 'IDLE') return 'IDLE'
   return 'UNKNOWN'
 }
 
@@ -141,12 +142,14 @@ const realtimeRows = computed(() => {
 
 const totalEquipmentCount = computed(() => realtimeRows.value.length)
 const runningEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'RUN').length)
+const idleEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'IDLE').length)
 const stoppedEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'STOP').length)
 const alarmEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'ALARM').length)
 
 const summaryCards = computed(() => ([
   { title: '총 설비 수', value: totalEquipmentCount.value, unit: '대', icon: '🏭', tone: 'blue' },
   { title: '가동 설비 수', value: runningEquipmentCount.value, unit: '대', icon: '▶', tone: 'green' },
+  { title: '대기 설비 수', value: idleEquipmentCount.value, unit: '대', icon: '⏳', tone: 'sky' },
   { title: '정지 설비 수', value: stoppedEquipmentCount.value, unit: '대', icon: 'Ⅱ', tone: 'orange' },
   { title: '알람 발생 수', value: alarmEquipmentCount.value, unit: '건', icon: '🚨', tone: 'red' },
 ]))
@@ -553,10 +556,11 @@ watch(selectedLine, startOeeAnimation)
 .dashboard-page { min-width: 1180px; min-height: 100vh; background: #f5f7fb; }
 .content { padding: 22px 32px 30px; }
 
-.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 16px; }
+.summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; margin-bottom: 16px; }
 .summary-card { height: 142px; display: flex; align-items: center; gap: 22px; padding: 26px 32px; background: #fff; border-radius: 14px; box-shadow: 0 5px 16px rgba(13, 36, 72, .12); }
 .summary-icon { width: 88px; height: 88px; display: grid; place-items: center; border-radius: 50%; font-size: 40px; }
 .summary-icon.blue { background: #e4f0ff; color: #1474df; }
+.summary-icon.sky { background: #dbeafe; color: #2563eb; }
 .summary-icon.green { background: #e1f6ef; color: #12a985; }
 .summary-icon.orange { background: #fff0df; color: #df7922; }
 .summary-icon.red { background: #ffe7eb; color: #fa2c45; }
@@ -621,7 +625,7 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .empty-row { color: #6b8098; font-weight: 900; }
 .status-text { font-weight: 900; }
 .status-run { color: #16a34a; }
-.status-idle { color: #facc15; }
+.status-idle { color: #2563eb; }
 .status-stop { color: #f97316; }
 .status-alarm { color: #ef4444; }
 
