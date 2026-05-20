@@ -13,9 +13,15 @@ import com.example.backend.dto.dashboard.EquipmentStatusCardDto;
 @Mapper
 public interface DashboardMapper {
 
-    // Status duration calculation (overlap with from~to window)
+    // Status duration calculation (overlap with from~to window) — per equipment
     Map<String, Object> getStatusDurations(
             @Param("equipmentId") String equipmentId,
+            @Param("from") String from,
+            @Param("to") String to);
+
+    // Status duration calculation — per line (joins equipment_status_log with equipment table)
+    Map<String, Object> getLineStatusDurations(
+            @Param("lineNo") String lineNo,
             @Param("from") String from,
             @Param("to") String to);
 
@@ -59,17 +65,25 @@ public interface DashboardMapper {
             @Param("quality") double quality,
             @Param("oee") double oee);
 
-    // Equipment failure count (ALARM status entries) in from~to
+    // Equipment failure count (ALARM overlap) in from~to
     int getEquipmentFailureCount(
             @Param("equipmentId") String equipmentId,
             @Param("from") String from,
             @Param("to") String to);
+
+    // 7-day rolling stats for MTTF/MTTR/MTBF
+    int getFailureCount7d(@Param("equipmentId") String equipmentId);
+    Long getRunTimeSec7d(@Param("equipmentId") String equipmentId);
+    Long getAlarmTimeSec7d(@Param("equipmentId") String equipmentId);
 
     // Total accumulated RUN hours (all time)
     Double getTotalAccumulatedRunHours(@Param("equipmentId") String equipmentId);
 
     // Average daily RUN hours over last 7 days
     Double getAvgDailyRunHours7d(@Param("equipmentId") String equipmentId);
+
+    // Latest status for a single equipment
+    String getLatestEquipmentStatus(@Param("equipmentId") String equipmentId);
 
     // Alarm count in last 24 hours
     int getAlarmCount24h(@Param("equipmentId") String equipmentId);

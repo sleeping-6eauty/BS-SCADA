@@ -50,11 +50,15 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
                         // 인증 없이 접근 가능한 API
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login",
                                 "/api/auth/signup"
                         ).permitAll()
+
+                        // Node-RED 내부 트리거용 Dashboard Summary 생성 API
+                        .requestMatchers(HttpMethod.POST, "/api/dashboard/summaries/generate").permitAll()
 
                         // 로그인한 사용자 확인 API
                         .requestMatchers("/api/auth/me", "/api/auth/me/equipments").authenticated()
