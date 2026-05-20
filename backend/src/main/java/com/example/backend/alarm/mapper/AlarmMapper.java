@@ -194,14 +194,14 @@ public interface AlarmMapper {
 
 	@Select("""
 		SELECT
-			al.created_at AS createdAt,
+			al.`timestamp` AS timestamp,
 			al.equipment_id AS equipmentId,
 			al.alarm_type AS alarmType,
 			al.alarm_status AS alarmStatus,
 			ue.user_id AS userId
 		FROM alarm_log al
 		LEFT JOIN user_equipment ue ON ue.equipment_id = al.equipment_id
-		ORDER BY al.created_at DESC
+		ORDER BY al.`timestamp` DESC
 		""")
 	List<AlarmLogRow> findAlarmLogRows();
 

@@ -311,7 +311,7 @@ public class AlarmService {
 
 	private AlarmLogRow toFallbackLogRow(Alarm alarm) {
 		AlarmLogRow row = new AlarmLogRow();
-		row.setCreatedAt(alarm.timestamp());
+		row.setTimestamp(alarm.timestamp());
 		row.setEquipmentId(alarm.equipmentId());
 		row.setAlarmType(alarm.alarmType());
 		row.setAlarmStatus(alarm.alarmStatus());

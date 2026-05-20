@@ -4,18 +4,18 @@ import java.time.LocalDateTime;
 
 public class AlarmLogRow {
 
-	private LocalDateTime createdAt;
+	private LocalDateTime timestamp;
 	private String equipmentId;
 	private String alarmType;
 	private String alarmStatus;
 	private Integer userId;
 
-	public LocalDateTime getCreatedAt() {
-		return createdAt;
+	public LocalDateTime getTimestamp() {
+		return timestamp;
 	}
 
-	public void setCreatedAt(LocalDateTime createdAt) {
-		this.createdAt = createdAt;
+	public void setTimestamp(LocalDateTime timestamp) {
+		this.timestamp = timestamp;
 	}
 
 	public String getEquipmentId() {
