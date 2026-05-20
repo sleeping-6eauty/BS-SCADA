@@ -30,6 +30,13 @@ export async function getEquipmentAlarmCount(equipmentId, days = 7) {
   return readJson(res, '설비별 알람 건수 조회 실패')
 }
 
+export async function getEquipments() {
+  const res = await fetch(`${API_BASE}/api/equipments`, {
+    headers: authHeaders(),
+  })
+  return readJson(res, '전체 설비 목록 조회 실패')
+}
+
 export async function getAlarmLog() {
   const res = await fetch(`${API_BASE}/api/alarms/log`, {
     headers: authHeaders(),
