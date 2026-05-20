@@ -79,7 +79,7 @@
                     :aria-label="`${line.label} ${line.conveyor.label} 상세 보기`"
                     @click="selectLayoutStation(line.conveyor)"
                   >
-                    <span>{{ line.conveyor.label }}</span>
+                    <span>{{ line.conveyor.equipment_id }}</span>
                     <div class="conveyor-track">
                       <i v-for="index in 4" :key="index"></i>
                     </div>
@@ -169,7 +169,7 @@
               <div><dt>설비 ID</dt><dd>{{ currentEquipmentDetail.equipment_id ?? '-' }}</dd></div>
               <div><dt>설비 위치</dt><dd>{{ currentEquipmentLocation }}</dd></div>
               <div><dt>설비 유형</dt><dd>{{ selectedEquipmentTypeLabel }}</dd></div>
-              <div><dt>마지막 업데이트</dt><dd>{{ latestLog.data?.timestamp ?? '2024-05-24 10:30:45' }}</dd></div>
+              <div><dt>마지막 업데이트</dt><dd>{{ currentEquipmentLastUpdate }}</dd></div>
             </dl>
 
             <div v-if="isConveyorSelected" class="inverter-control">
@@ -178,13 +178,20 @@
                 <span>API 미연결</span>
               </div>
               <div class="control-grid">
-                <div class="control-box">
+                <div class="control-box frequency-control">
                   <span>주파수</span>
-                  <strong>{{ currentConveyorControl.frequency }} Hz</strong>
-                  <div class="control-actions">
-                    <button type="button" @click="adjustConveyorFrequency(-5)">-5</button>
-                    <button type="button" @click="adjustConveyorFrequency(5)">+5</button>
+                  <div class="frequency-input-row">
+                    <input
+                      v-model.number="frequencyDraft"
+                      type="number"
+                      min="0"
+                      max="60"
+                      step="1"
+                      aria-label="컨베이어 주파수"
+                    />
+                    <strong>Hz</strong>
                   </div>
+                  <button type="button" class="confirm-button" @click="confirmConveyorFrequency">확인</button>
                 </div>
                 <div class="control-box">
                   <span>회전 여부</span>
@@ -213,29 +220,9 @@
 
             <h4 class="sub-title">주요 데이터</h4>
             <div class="metrics-grid">
-              <div class="metric-box">
-                <span>가동 상태</span>
-                <strong>{{ statusText[selectedEquipment?.status] ?? '-' }}</strong>
-              </div>
-              <div class="metric-box">
-                <span>가동 시간</span>
-                <strong>{{ runningTime }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor1" class="metric-box">
-                <span>{{ currentSensorData.sensor1.label }}</span>
-                <strong>{{ currentSensorData.sensor1.value.toFixed(currentSensorData.sensor1.decimals) }} {{ currentSensorData.sensor1.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor2" class="metric-box">
-                <span>{{ currentSensorData.sensor2.label }}</span>
-                <strong>{{ currentSensorData.sensor2.value.toFixed(currentSensorData.sensor2.decimals) }} {{ currentSensorData.sensor2.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor3" class="metric-box">
-                <span>{{ currentSensorData.sensor3.label }}</span>
-                <strong>{{ currentSensorData.sensor3.value.toFixed(currentSensorData.sensor3.decimals) }} {{ currentSensorData.sensor3.unit }}</strong>
-              </div>
-              <div v-if="currentSensorData.sensor4" class="metric-box">
-                <span>{{ currentSensorData.sensor4.label }}</span>
-                <strong>{{ currentSensorData.sensor4.value.toFixed(currentSensorData.sensor4.decimals) }} {{ currentSensorData.sensor4.unit }}</strong>
+              <div v-for="metric in currentMetricCards" :key="metric.key" class="metric-box">
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.valueText }}</strong>
               </div>
             </div>
           </section>
@@ -275,7 +262,7 @@ const equipmentSearch = ref('')
 const currentPage = ref(1)
 const rowsPerPage = 10
 const mqttRealtimeTopic = 'factory/equipment/+/realtime'
-const mqttBrokerUrl = import.meta.env.VITE_MQTT_URL ?? 'ws://localhost:9001'
+const mqttBrokerUrl = import.meta.env.VITE_MQTT_URL ?? 'ws://localhost:8000'
 
 const statusText = {
   running: '가동',
@@ -337,13 +324,13 @@ const equipmentTypeIcons = {
 }
 
 const monitoringEquipmentTypes = [
-  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'Daifuku' },
-  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'Hyundai Wia' },
-  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'ABB' },
-  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'Nachi' },
-  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Nordson' },
-  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'Keyence' },
-  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'BS-SCADA' },
+  { code: 'PLF', type: 'plf', zone: 'Zone A', label: '패널투입장치', manufacturer: 'SCHMALZ' },
+  { code: 'JIG', type: 'jig', zone: 'Zone B', label: '차체지그', manufacturer: 'MISUMI' },
+  { code: 'ROB', type: 'rob', zone: 'Zone C', label: '산업용로봇', manufacturer: 'Hi6-N00' },
+  { code: 'WLD', type: 'wld', zone: 'Zone D', label: '점용접기', manufacturer: 'ARO' },
+  { code: 'SLR', type: 'slr', zone: 'Zone E', label: '실러도포장비', manufacturer: 'Durr' },
+  { code: 'VSI', type: 'vsi', zone: 'Zone F', label: '비전검사기', manufacturer: 'VITRONIC' },
+  { code: 'CNV', type: 'cnv', zone: 'Zone G', label: '컨베이어', manufacturer: 'Hyundai Rotem' },
 ]
 
 const monitoringEquipmentTypeByCode = monitoringEquipmentTypes.reduce((map, item) => {
@@ -371,18 +358,24 @@ const monitoringEquipmentCatalog = monitoringEquipmentTypes.flatMap((item, typeI
 
 const formatEquipmentId = (code, lineNo) => `${code}-${String(lineNo).padStart(3, '0')}`
 
-const createStation = (lineNo, type, zone, status) => ({
-  id: formatEquipmentId(type.toUpperCase(), lineNo),
-  label: formatEquipmentId(type.toUpperCase(), lineNo),
-  type,
-  status: status ?? 'running',
-  zone,
-  line: `Line ${lineNo}`,
-  manufacturer: 'BS-SCADA',
-  equipment_id: formatEquipmentId(type.toUpperCase(), lineNo),
-  equipment_name: formatEquipmentId(type.toUpperCase(), lineNo),
-  line_no: `Line ${lineNo}`,
-})
+const createStation = (lineNo, type, zone, status) => {
+  const code = type.toUpperCase()
+  const meta = monitoringEquipmentTypeByCode[code] ?? {}
+  const equipmentId = formatEquipmentId(code, lineNo)
+
+  return {
+    id: equipmentId,
+    label: equipmentId,
+    type,
+    status: status ?? 'running',
+    zone,
+    line: `Line ${lineNo}`,
+    manufacturer: meta.manufacturer ?? 'BS-SCADA',
+    equipment_id: equipmentId,
+    equipment_name: equipmentId,
+    line_no: `Line ${lineNo}`,
+  }
+}
 
 const createConveyorStation = (lineNo, status = 'running') => ({
   id: formatEquipmentId('CNV', lineNo),
@@ -417,6 +410,7 @@ const conveyorControls = reactive({
   'CNV-002': { frequency: 35, rotating: false, stopped: true },
   'CNV-003': { frequency: 40, rotating: true, stopped: false },
 })
+const frequencyDraft = ref(0)
 
 const statusCodeMap = {
   RUN: 'running',
@@ -435,46 +429,46 @@ let mqttClient = null
 const getSensorDisplayLabels = (type) => {
   if (type === 'cnv') {
     return {
-      sensor1: { label: '모터 온도', key: 'motor_temperature_c', unit: '℃', decimals: 1 },
-      sensor2: { label: '모터 전류', key: 'motor_current_c', unit: 'A', decimals: 1 },
-      sensor3: { label: '이동 속도', key: 'moving_speed_m_s', unit: 'm/s', decimals: 2 },
+      sensor1: { label: '모터 내부 온도(℃)', key: 'motor_temperature_c', decimals: 1 },
+      sensor2: { label: '모터 전류(A)', key: 'motor_current_c', decimals: 1 },
+      sensor3: { label: '이동 속도(m/s)', key: 'moving_speed_m_s', decimals: 2 },
     }
   }
   if (type === 'plf') {
     return {
-      sensor1: { label: '모터 전류', key: 'moter_current_a', unit: 'A', decimals: 1 },
-      sensor2: { label: '진공 압력', key: 'vaccum_pressure_kpa', unit: 'kPa', decimals: 1 },
-      sensor3: { label: '위치 오차', key: 'position_error_mm', unit: 'mm', decimals: 2 },
+      sensor1: { label: '모터 전류(A)', key: 'moter_current_a', decimals: 1 },
+      sensor2: { label: '진공 압력(kPa)', key: 'vaccum_pressure_kpa', decimals: 1 },
+      sensor3: { label: '위치 오차(mm)', key: 'position_error_mm', decimals: 2 },
     }
   }
   if (type === 'jig') {
     return {
-      sensor1: { label: '클램프 압력', key: 'clamp_pressure_bar', unit: 'bar', decimals: 2 },
-      sensor2: { label: '공압 압력', key: 'pneumatic_press_bar', unit: 'bar', decimals: 2 },
-      sensor3: { label: '클램프 위치', key: 'clamp_position_mm', unit: 'mm', decimals: 1 },
+      sensor1: { label: '클램프 압력(bar)', key: 'clamp_pressure_bar', decimals: 2 },
+      sensor2: { label: '공압 압력(bar)', key: 'pneumatic_press_bar', decimals: 2 },
+      sensor3: { label: '클램프 위치(mm)', key: 'clamp_position_mm', decimals: 1 },
     }
   }
   if (type === 'robot' || type === 'rob') {
     return {
-      sensor1: { label: '스위블', key: 'robot_swivel', unit: 'deg', decimals: 1 },
-      sensor2: { label: '수평축', key: 'robot_horizontal', unit: 'mm', decimals: 1 },
-      sensor3: { label: '수직축', key: 'robot_vertical', unit: 'mm', decimals: 1 },
-      sensor4: { label: '툴 오프셋', key: 'tool_offset_er', unit: 'mm', decimals: 2 },
+      sensor1: { label: '로봇 스위블(deg)', key: 'robot_swivel', decimals: 1 },
+      sensor2: { label: '로봇 수평축(mm)', key: 'robot_horizontal', decimals: 1 },
+      sensor3: { label: '로봇 수직축(mm)', key: 'robot_vertical', decimals: 1 },
+      sensor4: { label: '툴 오프셋 오차(mm)', key: 'tool_offset_er', decimals: 2 },
     }
   }
   if (type === 'wld') {
     return {
-      sensor1: { label: '용접 전압(DC)', key: 'weld_voltage_dc', unit: 'V', decimals: 1 },
-      sensor2: { label: '용접 전류(DC)', key: 'weld_current_dc', unit: 'A', decimals: 1 },
-      sensor3: { label: '용접 전류(AC)', key: 'weld_current_ac', unit: 'A', decimals: 1 },
-      sensor4: { label: '용접 속도', key: 'weld_speed', unit: 'mm/s', decimals: 1 },
+      sensor1: { label: '용접 전압 DC(V)', key: 'weld_voltage_dc', decimals: 1 },
+      sensor2: { label: '용접 전류 DC(A)', key: 'weld_current_dc', decimals: 1 },
+      sensor3: { label: '용접 전류 AC(A)', key: 'weld_current_ac', decimals: 1 },
+      sensor4: { label: '용접 속도(mm/s)', key: 'weld_speed', decimals: 1 },
     }
   }
   if (type === 'slr') {
     return {
-      sensor1: { label: '토출 압력', key: 'dispense_pressure_bar', unit: 'bar', decimals: 2 },
-      sensor2: { label: '실러 온도', key: 'sealer_temperature_c', unit: '℃', decimals: 1 },
-      sensor3: { label: '유량', key: 'flow_rate_ml_s', unit: 'ml/s', decimals: 2 },
+      sensor1: { label: '토출 압력(bar)', key: 'dispense_pressure_bar', decimals: 2 },
+      sensor2: { label: '실러 온도(℃)', key: 'sealer_temperature_c', decimals: 1 },
+      sensor3: { label: '유량(ml/s)', key: 'flow_rate_ml_s', decimals: 2 },
     }
   }
   return {}
@@ -506,6 +500,7 @@ const setActiveView = (view) => {
 }
 
 const selectLayoutStation = (station) => {
+  const meta = getEquipmentMeta(station.equipment_id ?? station.id)
   selectedEquipment.value = {
     id: station.id,
     name: station.label,
@@ -514,7 +509,7 @@ const selectLayoutStation = (station) => {
     zone: station.zone,
     line: station.line,
     layoutType: station.type,
-    manufacturer: station.manufacturer,
+    manufacturer: station.manufacturer ?? meta.manufacturer,
     equipment_id: station.equipment_id,
     equipment_name: station.equipment_name,
     line_no: station.line_no,
@@ -552,10 +547,12 @@ const currentConveyorControl = computed(() => {
   return conveyorControls[id] ?? { frequency: 0, rotating: false, stopped: true }
 })
 
-const adjustConveyorFrequency = (amount) => {
+const confirmConveyorFrequency = () => {
   const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
   if (!id || !conveyorControls[id]) return
-  const nextFrequency = conveyorControls[id].frequency + amount
+
+  const nextFrequency = Number(frequencyDraft.value)
+  if (!Number.isFinite(nextFrequency)) return
   conveyorControls[id].frequency = Math.min(Math.max(nextFrequency, 0), 60)
 }
 
@@ -615,6 +612,7 @@ const getRunningTimeText = (equipmentId, fallback = '00:00:00') => {
 
 const getLocationForEquipment = (equipmentId, lineNo, zone) => {
   const meta = getEquipmentMeta(equipmentId)
+  if (meta.type === 'cnv') return normalizeLineNo(lineNo) || '-'
   return formatEquipmentLocation(lineNo, zone ?? meta.zone)
 }
 
@@ -783,6 +781,11 @@ onMounted(async () => {
 // 선택 설비가 바뀌면 로그 데이터 로드
 watch(selectedEquipment, async (newEquipment) => {
   if (!newEquipment || !newEquipment.id) return
+
+  if (newEquipment.layoutType === 'cnv') {
+    const control = conveyorControls[newEquipment.id]
+    frequencyDraft.value = control?.frequency ?? 0
+  }
   
   try {
     latestLog.loading = true
@@ -796,9 +799,11 @@ watch(selectedEquipment, async (newEquipment) => {
     
     // 최신 로그 데이터 로드
     const logData = await fetchLatestLog(newEquipment.id)
-    latestLog.data = logData
     if (shouldApplyLogStatus(logData)) {
+      latestLog.data = logData
       equipmentLogCache[newEquipment.id] = logData
+    } else {
+      latestLog.data = null
     }
     
     // 가동 시간 로드
@@ -831,12 +836,19 @@ const currentEquipmentDetail = computed(() => {
   
   const equipDetail = equipment.list.find(eq => eq.equipment_id === selectedEquipment.value.id)
   const realtimeData = getRealtimeData(selectedEquipment.value.id) ?? {}
+  const meta = getEquipmentMeta(selectedEquipment.value.id)
+  const selectedManufacturer = selectedEquipment.value.manufacturer
+  const manufacturer = realtimeData.manufacturer
+    ?? (selectedManufacturer === 'BS-SCADA' && meta.manufacturer ? meta.manufacturer : selectedManufacturer)
+    ?? meta.manufacturer
+    ?? 'BS-SCADA'
+
   return {
     ...(equipDetail || {}),
     ...realtimeData,
     equipment_id: selectedEquipment.value.equipment_id ?? selectedEquipment.value.id,
     equipment_name: realtimeData.equipment_name ?? selectedEquipment.value.equipment_name ?? selectedEquipment.value.name,
-    manufacturer: realtimeData.manufacturer ?? selectedEquipment.value.manufacturer ?? 'BS-SCADA',
+    manufacturer,
     zone: realtimeData.zone ?? selectedEquipment.value.zone,
     line_no: normalizeLineNo(realtimeData.line_no ?? selectedEquipment.value.line_no ?? selectedEquipment.value.line),
     type: realtimeData.type ?? selectedEquipment.value.layoutType ?? selectedEquipment.value.type,
@@ -849,6 +861,10 @@ const currentEquipmentLocation = computed(() => {
     currentEquipmentDetail.value.line_no,
     currentEquipmentDetail.value.zone,
   )
+})
+
+const currentEquipmentLastUpdate = computed(() => {
+  return latestLog.data?.timestamp ?? getRealtimeData(selectedEquipment.value?.id)?.timestamp ?? '-'
 })
 
 const selectedEquipmentTypeLabel = computed(() => {
@@ -869,26 +885,23 @@ const currentSensorLabels = computed(() => {
   return getSensorDisplayLabels(selectedEquipment.value?.type)
 })
 
-// 현재 설비의 측정 센서 데이터
-const currentSensorData = computed(() => {
-  if (!latestLog.data) return {}
-  
-  const labels = currentSensorLabels.value
-  const data = {}
-  
-  Object.entries(labels).forEach(([key, label]) => {
-    const value = Number(latestLog.data[label.key])
-    if (!Number.isFinite(value)) return
+const formatMetricValue = (field) => {
+  const value = Number(latestLog.data?.[field.key])
+  if (!Number.isFinite(value)) return '-'
+  return value.toFixed(field.decimals ?? 1)
+}
 
-    data[key] = {
-      label: label.label,
-      value,
-      unit: label.unit,
-      decimals: label.decimals ?? 1,
-    }
-  })
-  
-  return data
+const currentMetricCards = computed(() => {
+  const sensorCards = Object.entries(currentSensorLabels.value).map(([key, field]) => ({
+    key,
+    label: field.label,
+    valueText: formatMetricValue(field),
+  }))
+
+  return [
+    { key: 'running-time', label: '가동 시간', valueText: runningTime.value || '-' },
+    ...sensorCards,
+  ]
 })
 </script>
 
@@ -1204,6 +1217,13 @@ h2 span {
   cursor: pointer;
 }
 
+.equipment-node:hover,
+.equipment-node:focus-visible {
+  border-color: #0f75d8;
+  box-shadow: 0 0 0 3px rgba(15, 117, 216, 0.13), 0 8px 18px rgba(26, 53, 88, 0.06);
+  outline: none;
+}
+
 .equipment-node strong {
   font-size: 13px;
   color: #09295a;
@@ -1263,6 +1283,7 @@ h2 span {
   left: 50%;
   top: 0;
   transform: translateX(-50%);
+  min-width: 58px;
   color: #58667a;
   font-size: 12px;
   font-weight: 950;
@@ -1271,6 +1292,8 @@ h2 span {
   border-radius: 999px;
   background: #fff;
   border: 1px solid #c8d1df;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .conveyor-track {
@@ -1291,15 +1314,18 @@ h2 span {
 }
 
 .conveyor-link.running .conveyor-track {
-  border-color: #27bd78;
+  border-color: #e7f8ef;
+  background: #e7f8ef;
 }
 
 .conveyor-link.idle .conveyor-track {
-  border-color: #ffae18;
+  border-color: #fff5e4;
+  background: #fff5e4;
 }
 
 .conveyor-link.stop .conveyor-track {
-  border-color: #ff3030;
+  border-color: #ffecec;
+  background: #ffecec;
 }
 
 .conveyor-track::before,
@@ -1331,8 +1357,8 @@ h2 span {
 }
 
 .equipment-node.running {
-  border-color: #27bd78;
   background: #f0fbf5;
+  border-color: #f0fbf5;
 }
 
 .equipment-node.running .node-icon,
@@ -1346,8 +1372,8 @@ h2 span {
 }
 
 .equipment-node.idle {
-  border-color: #ffae18;
   background: #fff8eb;
+  border-color: #fff8eb;
 }
 
 .equipment-node.idle .node-icon,
@@ -1361,8 +1387,8 @@ h2 span {
 }
 
 .equipment-node.stop {
-  border-color: #ff3030;
   background: #fff1f2;
+  border-color: #fff1f2;
 }
 
 .equipment-node.stop .node-icon,
@@ -1376,8 +1402,8 @@ h2 span {
 }
 
 .equipment-node.unknown {
-  border-color: #a5afbd;
   background: #f4f6f9;
+  border-color: #f4f6f9;
 }
 
 .equipment-node.unknown .node-icon,
@@ -1770,7 +1796,7 @@ tbody tr {
 
 .control-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(150px, 1.15fr) repeat(2, minmax(0, 0.85fr));
   gap: 8px;
 }
 
@@ -1798,12 +1824,52 @@ tbody tr {
   font-weight: 950;
 }
 
-.control-actions {
+.frequency-input-row {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.control-actions button,
+.frequency-input-row input {
+  width: 92px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid #d4deec;
+  border-radius: 9px;
+  background: #fff;
+  color: #0d2448;
+  font-size: 18px;
+  font-weight: 900;
+  outline: 0;
+  box-shadow: inset 0 1px 2px rgba(35, 63, 104, 0.04);
+}
+
+.frequency-input-row input:focus {
+  border-color: #0f75d8;
+  box-shadow: 0 0 0 3px rgba(15, 117, 216, 0.13);
+}
+
+.frequency-input-row strong {
+  margin: 0;
+  color: #0d2448;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.confirm-button {
+  width: 100%;
+  height: 42px;
+  border: 1px solid #073c7b;
+  border-radius: 16px;
+  background: #073c7b;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
 .state-button {
   min-width: 48px;
   height: 30px;
