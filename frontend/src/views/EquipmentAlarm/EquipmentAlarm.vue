@@ -294,6 +294,7 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import AppTopbar from '@/components/AppTopbar.vue'
 import {
   getAlarmDetail,
@@ -306,7 +307,8 @@ import {
   patchAlarmMemo,
 } from '@/api/alarm.js'
 
-const selectedEquipmentId = ref('')
+const route = useRoute()
+const selectedEquipmentId = ref(String(route.query.equipmentId ?? ''))
 const trendPeriod = ref('day')
 const selectedFrequencyLine = ref('all')
 const selectedAlarmId = ref('')
