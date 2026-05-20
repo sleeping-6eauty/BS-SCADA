@@ -148,32 +148,32 @@ public interface AlarmMapper {
 	);
 
 	@Select("""
-		SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS label, COUNT(*) AS value
+		SELECT DATE_FORMAT(`timestamp`, '%Y-%m-%d') AS label, COUNT(*) AS value
 		FROM alarm_log
-		WHERE created_at IS NOT NULL
+		WHERE `timestamp` IS NOT NULL
 		  AND equipment_id = #{equipmentId}
-		GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
-		ORDER BY MIN(created_at)
+		GROUP BY DATE_FORMAT(`timestamp`, '%Y-%m-%d')
+		ORDER BY MIN(`timestamp`)
 		""")
 	List<AlarmStatisticsItem> countByDay(@Param("equipmentId") String equipmentId);
 
 	@Select("""
-		SELECT DATE_FORMAT(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d') AS label, COUNT(*) AS value
+		SELECT DATE_FORMAT(DATE_SUB(`timestamp`, INTERVAL WEEKDAY(`timestamp`) DAY), '%Y-%m-%d') AS label, COUNT(*) AS value
 		FROM alarm_log
-		WHERE created_at IS NOT NULL
+		WHERE `timestamp` IS NOT NULL
 		  AND equipment_id = #{equipmentId}
-		GROUP BY DATE_FORMAT(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d')
-		ORDER BY MIN(created_at)
+		GROUP BY DATE_FORMAT(DATE_SUB(`timestamp`, INTERVAL WEEKDAY(`timestamp`) DAY), '%Y-%m-%d')
+		ORDER BY MIN(`timestamp`)
 		""")
 	List<AlarmStatisticsItem> countByWeek(@Param("equipmentId") String equipmentId);
 
 	@Select("""
-		SELECT DATE_FORMAT(created_at, '%Y-%m') AS label, COUNT(*) AS value
+		SELECT DATE_FORMAT(`timestamp`, '%Y-%m') AS label, COUNT(*) AS value
 		FROM alarm_log
-		WHERE created_at IS NOT NULL
+		WHERE `timestamp` IS NOT NULL
 		  AND equipment_id = #{equipmentId}
-		GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-		ORDER BY MIN(created_at)
+		GROUP BY DATE_FORMAT(`timestamp`, '%Y-%m')
+		ORDER BY MIN(`timestamp`)
 		""")
 	List<AlarmStatisticsItem> countByMonth(@Param("equipmentId") String equipmentId);
 
