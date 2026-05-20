@@ -21,7 +21,7 @@ public class LowHealthAlarmMailReportScheduler {
 
 	public LowHealthAlarmMailReportScheduler(
 		MailReportService mailReportService,
-		@Value("${mail.report.low-health.threshold:70}") double healthScoreThreshold,
+		@Value("${mail.report.low-health.threshold:45}") double healthScoreThreshold,
 		@Value("${mail.report.low-health.batch-size:50}") int batchSize
 	) {
 		this.mailReportService = mailReportService;

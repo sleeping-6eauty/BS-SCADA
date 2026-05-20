@@ -44,7 +44,7 @@ public class AlarmService {
 	public AlarmService(
 		ObjectProvider<AlarmMapper> alarmMapperProvider,
 		ObjectProvider<MailReportService> mailReportServiceProvider,
-		@Value("${mail.report.low-health.threshold:70}") double lowHealthThreshold
+		@Value("${mail.report.low-health.threshold:45}") double lowHealthThreshold
 	) {
 		this.alarmMapper = alarmMapperProvider.getIfAvailable();
 		this.mailReportServiceProvider = mailReportServiceProvider;
