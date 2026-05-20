@@ -158,23 +158,24 @@
                   <tr v-else-if="alarmRows.length === 0">
                     <td colspan="5">표시할 알람이 없습니다.</td>
                   </tr>
-                  <tr
-                    v-for="row in alarmRows"
-                    v-else
-                    :key="row.id"
-                    :class="{ selected: row.id === selectedAlarmId || row.alarmId === selectedAlarmId }"
-                    @click="selectAlarm(row)"
-                  >
-                    <td>{{ row.time }}</td>
-                    <td>{{ row.equipment }}</td>
-                    <td>{{ row.type }}</td>
-                    <td>
-                      <span :class="['badge', row.state === '조치중' ? 'progress' : 'done']">
-                        {{ row.state }}
-                      </span>
-                    </td>
-                    <td>{{ row.manager }}</td>
-                  </tr>
+                  <template v-else>
+                    <tr
+                      v-for="row in paginatedAlarmRows"
+                      :key="row.id"
+                      :class="{ selected: row.id === selectedAlarmId || row.alarmId === selectedAlarmId }"
+                      @click="selectAlarm(row)"
+                    >
+                      <td>{{ row.time }}</td>
+                      <td>{{ row.equipment }}</td>
+                      <td>{{ row.type }}</td>
+                      <td>
+                        <span :class="['badge', row.stateClass]">
+                          {{ row.stateLabel }}
+                        </span>
+                      </td>
+                      <td>{{ row.manager }}</td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
             </div>
@@ -183,10 +184,32 @@
               <strong>전체 {{ alarmRows.length }}건</strong>
 
               <div class="pagination">
-                <button class="active">1</button>
+                <button
+                  type="button"
+                  :disabled="currentPage === 1"
+                  @click="goToPage(currentPage - 1)"
+                >
+                  ‹
+                </button>
+                <button
+                  v-for="page in paginationPages"
+                  :key="page"
+                  type="button"
+                  :class="{ active: page === currentPage }"
+                  @click="goToPage(page)"
+                >
+                  {{ page }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="currentPage === totalPages"
+                  @click="goToPage(currentPage + 1)"
+                >
+                  ›
+                </button>
               </div>
 
-              <span class="table-hint">실시간 조회</span>
+              <span class="table-hint">{{ currentPage }} / {{ totalPages }} 페이지</span>
             </div>
           </article>
         </div>
@@ -203,11 +226,8 @@
 
             <div class="detail-content">
               <div class="detail-badges">
-                <span :class="['badge', (detailAlarm?.severity || 'medium').toLowerCase()]">
-                  {{ detailAlarm?.severity || '-' }}
-                </span>
-                <span :class="['badge', detailAlarm?.state === '조치중' ? 'progress' : 'done']">
-                  {{ detailAlarm?.state || '-' }}
+                <span :class="['badge', detailAlarm?.stateClass || 'done']">
+                  {{ detailAlarm?.stateLabel || '-' }}
                 </span>
               </div>
 
@@ -255,9 +275,9 @@
 
                 <select v-model="selectedStatus" class="status-select">
                   <option value="">상태 선택</option>
-                  <option value="조치중">조치중</option>
-                  <option value="완료">완료</option>
-                  <option value="미조치">미조치</option>
+                  <option value="OPEN">미조치</option>
+                  <option value="IN_PROGRESS">조치중</option>
+                  <option value="RESOLVED">완료</option>
                 </select>
 
                 <button @click="addMemo" class="memo-button" :disabled="!memoAlarmId || savingMemo">
@@ -300,7 +320,7 @@ import {
   getAlarmDetail,
   getAlarmLog,
   getAlarmLogsByEquipment,
-  getAlarmStatistics,
+  getEquipmentAlarmStatistics,
   getEquipments,
   getEquipmentNames,
   getMyEquipments,
@@ -317,6 +337,8 @@ const memoInput = ref('')
 const loading = ref(false)
 const savingMemo = ref(false)
 const errorMessage = ref('')
+const currentPage = ref(1)
+const pageSize = ref(10)
 
 const trendData = ref([])
 const frequencyData = ref([])
@@ -380,6 +402,31 @@ const formatDateTime = (value) => {
   }).replace(/\. /g, '-').replace('.', '')
 }
 
+const normalizeStatusValue = (status) => {
+  const text = String(status ?? '').trim()
+  const normalized = text.toUpperCase()
+  if (['OPEN', '미조치', 'UNRESOLVED'].includes(normalized)) return 'OPEN'
+  if (['IN_PROGRESS', '조치중', 'PROGRESS'].includes(normalized)) return 'IN_PROGRESS'
+  if (['RESOLVED', '완료', 'DONE', 'CLOSED'].includes(normalized)) return 'RESOLVED'
+  return text || '-'
+}
+
+const getStatusLabel = (status) => {
+  const normalized = normalizeStatusValue(status)
+  if (normalized === 'OPEN') return '미조치'
+  if (normalized === 'IN_PROGRESS') return '조치중'
+  if (normalized === 'RESOLVED') return '완료'
+  return normalized
+}
+
+const getStatusClass = (status) => {
+  const normalized = normalizeStatusValue(status)
+  if (normalized === 'OPEN') return 'high'
+  if (normalized === 'IN_PROGRESS') return 'progress'
+  if (normalized === 'RESOLVED') return 'done'
+  return 'done'
+}
+
 const normalizeTrend = (payload) =>
   asArray(payload).map((item) => ({
     date: String(pick(item, ['date', 'period', 'label', 'created_at', 'createdAt'])),
@@ -400,16 +447,19 @@ const normalizeEquipment = (item) => {
 const normalizeAlarmRow = (row) => {
   const equipmentId = String(pick(row, ['equipment_id', 'equipmentId'], ''))
   const alarmId = toNumericId(pick(row, ['alarm_id', 'alarmId'], ''))
-  const rowId = alarmId || String(pick(row, ['id', 'log_id', 'logId'], `${equipmentId}-${pick(row, ['created_at', 'createdAt'], '')}`))
+  const rowTime = pick(row, ['timestamp', 'created_at', 'createdAt', 'time'], '')
+  const rowId = alarmId || String(pick(row, ['id', 'log_id', 'logId'], `${equipmentId}-${rowTime}`))
+  const rawStatus = String(pick(row, ['alarm_status', 'alarmStatus', 'status'], '-'))
   return {
     id: rowId,
     alarmId,
     equipmentId,
-    time: formatDateTime(pick(row, ['created_at', 'createdAt', 'time'], '')),
+    time: formatDateTime(rowTime),
     equipment: String(pick(row, ['equipment_name', 'equipmentName', 'equipment_id', 'equipmentId'], '-')),
     type: String(pick(row, ['alarm_type', 'alarmType', 'type'], '-')),
-    severity: String(pick(row, ['severity', 'alarm_level', 'alarmLevel'], 'Medium')),
-    state: String(pick(row, ['alarm_status', 'alarmStatus', 'status'], '-')),
+    state: rawStatus,
+    stateLabel: getStatusLabel(rawStatus),
+    stateClass: getStatusClass(rawStatus),
     manager: String(pick(row, ['user_id', 'userId', 'manager', 'username'], '-')),
     memo: String(pick(row, ['alarm_memo', 'alarmMemo', 'memo'], '')),
     raw: row,
@@ -419,6 +469,31 @@ const normalizeAlarmRow = (row) => {
 const selectedAlarm = computed(() =>
   alarmRows.value.find((row) => row.alarmId === selectedAlarmId.value || row.id === selectedAlarmId.value)
 )
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(alarmRows.value.length / pageSize.value))
+)
+
+const paginatedAlarmRows = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return alarmRows.value.slice(start, start + pageSize.value)
+})
+
+const paginationPages = computed(() => {
+  const maxVisible = 5
+  const half = Math.floor(maxVisible / 2)
+  const start = Math.max(1, Math.min(currentPage.value - half, totalPages.value - maxVisible + 1))
+  const end = Math.min(totalPages.value, start + maxVisible - 1)
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index)
+})
+
+const goToPage = (page) => {
+  currentPage.value = Math.min(Math.max(1, page), totalPages.value)
+}
+
+const clampCurrentPage = () => {
+  goToPage(currentPage.value)
+}
 
 const detailAlarmSource = computed(() => {
   const detail = alarmDetail.value
@@ -465,13 +540,10 @@ const detailRows = computed(() => {
     ['알람 ID', pick(alarm, ['alarm_id', 'alarmId', 'id'], selectedAlarm.value?.alarmId ?? '-')],
     ['설비 ID', pick(alarm, ['equipment_id', 'equipmentId'], selectedEquipmentId.value ?? '-')],
     ['알람 유형', pick(alarm, ['alarm_type', 'alarmType', 'type'], detailAlarm.value?.type ?? '-')],
-    ['상태', pick(alarm, ['alarm_status', 'alarmStatus', 'status'], detailAlarm.value?.state ?? '-')],
-    ['담당자', pick(alarm, ['user_id', 'userId', 'manager'], detailAlarm.value?.manager ?? '-')],
-    ['메모', pick(alarm, ['alarm_memo', 'alarmMemo', 'memo'], memoInput.value || '-')],
+    ['상태', getStatusLabel(pick(alarm, ['alarm_status', 'alarmStatus', 'status'], detailAlarm.value?.state ?? '-'))],
     ['설비명', pick(equipment, ['equipment_name', 'equipmentName', 'name'], selectedEquipmentName.value)],
     ['제조사', pick(equipment, ['manufacturer', 'maker'], '-')],
     ['위치', pick(equipment, ['location', 'zone', 'line_no', 'lineNo'], '-')],
-    ['설비 유형', pick(equipment, ['equipment_type', 'equipmentType', 'type'], '-')],
   ]
 })
 
@@ -496,6 +568,7 @@ const getEquipmentIcon = (name = '') => {
 }
 
 const selectEquipment = (equipmentId) => {
+  currentPage.value = 1
   selectedEquipmentId.value = equipmentId
   const alarm = alarmRows.value.find((row) => row.equipmentId === equipmentId)
   selectedAlarmId.value = alarm?.alarmId || ''
@@ -504,12 +577,16 @@ const selectEquipment = (equipmentId) => {
 const selectAlarm = (row) => {
   selectedEquipmentId.value = row.equipmentId
   selectedAlarmId.value = row.alarmId
-  selectedStatus.value = row.state
+  selectedStatus.value = normalizeStatusValue(row.state)
   memoInput.value = row.memo
 }
 
 const loadTrend = async () => {
-  trendData.value = normalizeTrend(await getAlarmStatistics(trendPeriod.value))
+  if (!selectedEquipmentId.value) {
+    trendData.value = []
+    return
+  }
+  trendData.value = normalizeTrend(await getEquipmentAlarmStatistics(selectedEquipmentId.value, trendPeriod.value))
 }
 
 const loadEquipmentLists = async () => {
@@ -551,12 +628,13 @@ const loadLogs = async () => {
     ? await getAlarmLogsByEquipment(selectedEquipmentId.value)
     : await getAlarmLog()
   alarmRows.value = asArray(payload).map(normalizeAlarmRow)
+  clampCurrentPage()
 
   const selectedAlarmExists = alarmRows.value.some((row) => row.alarmId === selectedAlarmId.value)
   if (!selectedAlarmExists) {
     const firstAlarm = alarmRows.value[0]
     selectedAlarmId.value = firstAlarm?.alarmId || ''
-    selectedStatus.value = firstAlarm?.state || ''
+    selectedStatus.value = firstAlarm?.state ? normalizeStatusValue(firstAlarm.state) : ''
     memoInput.value = firstAlarm?.memo || ''
   }
 }
@@ -564,7 +642,9 @@ const loadLogs = async () => {
 const loadDetail = async () => {
   if (!selectedEquipmentId.value) return
   alarmDetail.value = await getAlarmDetail(selectedEquipmentId.value)
-  selectedStatus.value = detailAlarm.value?.state ?? selectedStatus.value
+  selectedStatus.value = detailAlarm.value?.state
+    ? normalizeStatusValue(detailAlarm.value.state)
+    : selectedStatus.value
   memoInput.value = pick(detailAlarm.value?.raw, ['alarm_memo', 'alarmMemo', 'memo'], '')
 }
 
@@ -572,12 +652,12 @@ const loadPageData = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    await Promise.all([loadTrend(), loadEquipmentLists()])
+    await loadEquipmentLists()
     if (!selectedEquipmentId.value) {
       const firstEquipment = assignedEquipmentList.value[0] ?? equipmentList.value[0]
       if (firstEquipment) selectEquipment(firstEquipment.id)
     }
-    await Promise.all([loadLogs(), loadCounts(), loadDetail()])
+    await Promise.all([loadTrend(), loadLogs(), loadCounts(), loadDetail()])
   } catch (err) {
     errorMessage.value = err.message || '알람 데이터를 불러오지 못했습니다.'
   } finally {
@@ -591,9 +671,11 @@ const addMemo = async () => {
   savingMemo.value = true
   errorMessage.value = ''
   try {
+    const fallbackStatus = detailAlarm.value?.state || selectedAlarm.value?.state
     await patchAlarmMemo(alarmId, {
       alarm_memo: memoInput.value.trim(),
-      alarm_status: selectedStatus.value || detailAlarm.value?.state || selectedAlarm.value?.state,
+      alarm_status: selectedStatus.value
+        || (fallbackStatus ? normalizeStatusValue(fallbackStatus) : undefined),
     })
     await Promise.all([loadLogs(), loadDetail()])
   } catch (err) {
@@ -606,7 +688,8 @@ const addMemo = async () => {
 watch(trendPeriod, loadTrend)
 watch(selectedFrequencyLine, loadCounts)
 watch(selectedEquipmentId, async () => {
-  await Promise.all([loadLogs(), loadCounts(), loadDetail()])
+  currentPage.value = 1
+  await Promise.all([loadTrend(), loadLogs(), loadCounts(), loadDetail()])
 })
 
 onMounted(loadPageData)
@@ -1035,18 +1118,6 @@ tbody tr:last-child td {
   border: 1px solid #fecaca;
 }
 
-.badge.medium {
-  background: #ffedd5;
-  color: #ea580c;
-  border: 1px solid #fed7aa;
-}
-
-.badge.low {
-  background: #dbeafe;
-  color: #2563eb;
-  border: 1px solid #bfdbfe;
-}
-
 .badge.progress {
   background: #fff7ed;
   color: #f97316;
@@ -1111,6 +1182,14 @@ tbody tr:last-child td {
   background: #1d4ed8;
   color: #ffffff;
   box-shadow: 0 6px 14px rgba(29, 78, 216, 0.24);
+}
+
+.pagination button:disabled {
+  color: #94a3b8;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* 오른쪽 상세 영역 */

@@ -22,6 +22,14 @@ export async function getAlarmStatistics(period = 'day') {
   return readJson(res, '알람 발생 추이 조회 실패')
 }
 
+export async function getEquipmentAlarmStatistics(equipmentId, period = 'day') {
+  const params = new URLSearchParams({ period })
+  const res = await fetch(`${API_BASE}/api/alarms/${encodeURIComponent(equipmentId)}/statistics?${params}`, {
+    headers: authHeaders(),
+  })
+  return readJson(res, '설비별 알람 발생 추이 조회 실패')
+}
+
 export async function getEquipmentAlarmCount(equipmentId, days = 7) {
   const params = new URLSearchParams({ days })
   const res = await fetch(`${API_BASE}/api/alarms/${encodeURIComponent(equipmentId)}/count?${params}`, {

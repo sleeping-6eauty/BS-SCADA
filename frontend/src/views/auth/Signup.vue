@@ -133,8 +133,8 @@ async function handleSignup() {
   --line: #d9e2ef;
   --muted: #7584a3;
   display: grid;
-  grid-template-columns: minmax(500px, 39.5vw) 1fr;
-  min-width: 1180px;
+  grid-template-columns: minmax(380px, 36vw) minmax(0, 1fr);
+  min-width: 0;
   min-height: 100vh;
   background: #f7f9fd;
   color: #0b1b46;
@@ -146,7 +146,7 @@ async function handleSignup() {
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
-  padding: 114px 58px 54px;
+  padding: clamp(46px, 7vh, 78px) clamp(34px, 4vw, 52px) 44px;
   color: #fff;
   background:
     radial-gradient(circle at 28% 42%, rgba(16, 104, 214, 0.42), transparent 31%),
@@ -188,22 +188,22 @@ async function handleSignup() {
 .brand-copy {
   position: relative;
   z-index: 1;
-  margin-bottom: 42px;
+  margin-bottom: 28px;
   text-align: center;
 }
 
 .brand-logo-left,
 .brand-logo-right {
-  width: 92px;
+  width: clamp(66px, 7vw, 82px);
   height: auto;
   object-fit: contain;
   display: block;
-  margin: 0 auto 24px;
+  margin: 0 auto 18px;
 }
 
 .brand-copy h1 {
-  margin: 26px 0 18px;
-  font-size: 38px;
+  margin: 18px 0 12px;
+  font-size: clamp(28px, 2.6vw, 34px);
   font-weight: 950;
   letter-spacing: 0;
 }
@@ -211,7 +211,7 @@ async function handleSignup() {
 .brand-copy p {
   margin: 0;
   color: rgba(255, 255, 255, 0.82);
-  font-size: 20px;
+  font-size: clamp(16px, 1.45vw, 18px);
   font-weight: 650;
 }
 
@@ -468,12 +468,12 @@ async function handleSignup() {
   position: relative;
   display: grid;
   place-items: center;
-  padding: 46px 64px 72px;
+  padding: clamp(22px, 3.4vh, 34px) clamp(32px, 5vw, 56px) 54px;
 }
 
 .auth-card {
-  width: min(780px, 100%);
-  padding: 32px 54px 28px;
+  width: min(560px, 100%);
+  padding: clamp(24px, 3.8vh, 32px) clamp(36px, 4.5vw, 46px) 24px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 18px 50px rgba(20, 42, 83, 0.13);
@@ -503,13 +503,13 @@ async function handleSignup() {
 }
 
 .form-heading {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   text-align: center;
 }
 
 .form-heading h2 {
-  margin: 14px 0 6px;
-  font-size: 38px;
+  margin: 12px 0 4px;
+  font-size: clamp(28px, 2.5vw, 32px);
   font-weight: 950;
   letter-spacing: 0;
   color: #071b54;
@@ -518,7 +518,7 @@ async function handleSignup() {
 .form-heading p {
   margin: 0;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -530,9 +530,9 @@ async function handleSignup() {
 
 .field-label {
   display: block;
-  margin: 0 0 8px;
+  margin: 0 0 7px;
   color: #0a1b4d;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 900;
 }
 
@@ -544,9 +544,9 @@ async function handleSignup() {
 .input-wrap {
   display: flex;
   align-items: center;
-  height: 54px;
-  margin-bottom: 16px;
-  padding: 0 16px;
+  height: 48px;
+  margin-bottom: 12px;
+  padding: 0 14px;
   border: 1px solid #ccd7e7;
   border-radius: 8px;
   background: #fff;
@@ -565,9 +565,9 @@ async function handleSignup() {
   height: 100%;
   border: 0;
   outline: 0;
-  padding: 0 16px;
+  padding: 0 14px;
   color: #102653;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   background: transparent;
 }
@@ -738,14 +738,14 @@ async function handleSignup() {
 
 .primary-button {
   width: 100%;
-  height: 60px;
+  height: 52px;
   margin-top: 4px;
   border: 0;
   border-radius: 8px;
   color: #fff;
   background: linear-gradient(180deg, #086bff, #0753dc);
   box-shadow: 0 12px 22px rgba(6, 88, 231, 0.23);
-  font-size: 21px;
+  font-size: 18px;
   font-weight: 950;
   cursor: pointer;
 }
@@ -760,10 +760,10 @@ async function handleSignup() {
 }
 
 .auth-link {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   color: #7584a3;
   text-align: center;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
 }
 
@@ -774,7 +774,7 @@ async function handleSignup() {
 
 .copyright {
   position: absolute;
-  bottom: 28px;
+  bottom: 22px;
   margin: 0;
   color: #8492ad;
   font-size: 15px;
@@ -783,8 +783,7 @@ async function handleSignup() {
 
 @media (max-width: 1280px) {
   .auth-page {
-    min-width: 1100px;
-    grid-template-columns: 450px 1fr;
+    grid-template-columns: 390px minmax(0, 1fr);
   }
 
   .brand-panel {
@@ -793,9 +792,24 @@ async function handleSignup() {
   }
 
   .auth-card {
-    width: 710px;
-    padding-left: 46px;
-    padding-right: 46px;
+    width: 540px;
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+}
+
+@media (max-width: 900px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-panel {
+    min-height: 220px;
+    padding: 34px 28px;
+  }
+
+  .form-panel {
+    padding: 24px 20px 50px;
   }
 }
 </style>
