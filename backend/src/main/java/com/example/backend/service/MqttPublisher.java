@@ -13,10 +13,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class MqttPublisher {
 
-    @Value("${mqtt.broker-url}")
+    @Value("${mqtt.broker-url:}")
     private String brokerUrl;
 
-    @Value("${mqtt.client-id}")
+    @Value("${mqtt.client-id:backend}")
     private String clientId;
 
     private MqttClient client;
@@ -25,6 +25,7 @@ public class MqttPublisher {
     @PostConstruct
     public void init() {
         try {
+            if (brokerUrl == null || brokerUrl.isBlank()) return;
             client = new MqttClient(brokerUrl, clientId + "-" + System.currentTimeMillis(), new MemoryPersistence());
             MqttConnectOptions opts = new MqttConnectOptions();
             opts.setAutomaticReconnect(true);
