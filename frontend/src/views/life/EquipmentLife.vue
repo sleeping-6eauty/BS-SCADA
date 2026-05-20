@@ -1,10 +1,19 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import mqtt from 'mqtt'
 import { Client } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import AppTopbar from '@/components/AppTopbar.vue'
 import { getEquipmentStatus } from '@/api/dashboard'
+
+const defaultBrokerUrl = window.location.protocol === 'https:'
+  ? 'wss://broker.mqttdashboard.com:8884/mqtt'
+  : 'ws://broker.mqttdashboard.com:8000/mqtt'
+const brokerUrl = import.meta.env.VITE_MQTT_BROKER_URL ?? defaultBrokerUrl
+const topicFilter = import.meta.env.VITE_MQTT_TOPIC ?? 'factory/equipment/+/realtime'
+const mqttUsername = import.meta.env.VITE_MQTT_USERNAME
+const mqttPassword = import.meta.env.VITE_MQTT_PASSWORD
 
 const router = useRouter()
 const searchQuery = ref('')
@@ -27,14 +36,14 @@ const equipmentDefs = [
 ]
 
 const zones = ['Zone A', 'Zone B', 'Zone C']
-const statusPool = [
-  { status: 'running', statusLabel: '가동' },
-  { status: 'idle', statusLabel: '대기' },
-  { status: 'stop', statusLabel: '정지' },
-]
 
-const STATUS_MAP = { RUN: 'running', STOP: 'stop', IDLE: 'idle', ALARM: 'stop' }
+const STATUS_MAP = { RUN: 'running', STOP: 'stop', IDLE: 'idle', ALARM: 'alarm' }
 const STATUS_LABEL_MAP = { RUN: '가동', STOP: '정지', IDLE: '대기', ALARM: '알람' }
+
+const parseTopicEquipmentId = (topic) => {
+  const match = /^factory\/equipment\/([^/]+)\/realtime$/i.exec(topic ?? '')
+  return match?.[1] ?? ''
+}
 
 const buildEquipmentList = () => {
   const list = []
@@ -47,29 +56,26 @@ const buildEquipmentList = () => {
       const line = `${zone} - Line ${lineNo}`
       const life = Math.max(12, (lifeSeed + typeIdx * 7 - unit * 11) % 91)
       lifeSeed -= 3
-      const statusInfo = statusPool[(typeIdx + unit) % statusPool.length]
-      const month = String(((typeIdx + unit) % 12) + 1).padStart(2, '0')
       const id = `${def.code}-${String(unit).padStart(3, '0')}`
 
       list.push({
         id,
         name: id,
         type: def.type,
-        status: statusInfo.status,
-        statusLabel: statusInfo.statusLabel,
+        status: 'unknown',
+        statusLabel: '-',
         life,
-        replaceDate: life < 35 ? `2024-${month}-10` : `2025-${month}-18`,
         line,
         icon: def.icon,
         manufacturer: def.manufacturer,
         equipId: id,
         location: line,
-        lastUpdate: '2024-05-24 10:30:45',
-        runtime: statusInfo.status === 'stop' ? '00:00:00' : '02:45:12',
-        temp: `${(36 + typeIdx).toFixed(1)} °C`,
-        current: statusInfo.status === 'stop' ? '0.0 A' : `${(5 + unit).toFixed(1)} A`,
-        cycleTime: statusInfo.status === 'stop' ? '-' : `${(10 + unit).toFixed(1)} s`,
-        production: statusInfo.status === 'stop' ? '0 EA' : `${800 + typeIdx * 120 + unit * 40} EA`,
+        lastUpdate: '-',
+        runtime: '-',
+        temp: '-',
+        current: '-',
+        cycleTime: '-',
+        production: '-',
       })
     }
   })
@@ -91,31 +97,68 @@ const refreshEquipments = async () => {
     const data = await getEquipmentStatus()
     if (!Array.isArray(data)) return
 
-    equipmentList.value = equipmentList.value.map((item) => {
-      const remote = data.find(
-        (e) => (e.equipmentId ?? e.equipment_id) === item.id,
-      )
-      if (!remote) return item
+    for (const remote of data) {
+      const remoteId = remote.equipmentId ?? remote.equipment_id
+      const idx = equipmentList.value.findIndex((item) => item.id === remoteId)
+      if (idx === -1) continue
 
-      const rawStatus = remote.status ?? remote.currentStatus
-      return {
+      const item = equipmentList.value[idx]
+      equipmentList.value[idx] = {
         ...item,
-        status: STATUS_MAP[rawStatus] ?? item.status,
-        statusLabel: STATUS_LABEL_MAP[rawStatus] ?? item.statusLabel,
         life: remote.healthScore != null ? Math.round(remote.healthScore) : item.life,
         lastUpdate: remote.lastUpdate ?? remote.updatedAt ?? item.lastUpdate,
       }
-    })
+    }
   } catch {
     // 백엔드 미연결 시 기존 목업 유지
   }
 }
 
 let stompClient = null
+let mqttClient = null
+
+const connectMqtt = () => {
+  mqttClient = mqtt.connect(brokerUrl, {
+    clientId: `bs-scada-life-${Math.random().toString(16).slice(2, 10)}`,
+    username: mqttUsername,
+    password: mqttPassword,
+    reconnectPeriod: 3000,
+    connectTimeout: 10000,
+    clean: true,
+  })
+
+  mqttClient.on('connect', () => {
+    mqttClient.subscribe(topicFilter, { qos: 0 })
+  })
+
+  mqttClient.on('message', (topic, payloadBuffer) => {
+    try {
+      const payload = JSON.parse(payloadBuffer.toString())
+      if (!payload || typeof payload !== 'object') return
+
+      const equipmentId = String(payload.equipment_id ?? parseTopicEquipmentId(topic)).trim()
+      if (!equipmentId) return
+
+      const rawStatus = String(payload.status ?? '').toUpperCase()
+      const status = STATUS_MAP[rawStatus]
+      if (!status) return
+
+      const statusLabel = STATUS_LABEL_MAP[rawStatus]
+
+      const idx = equipmentList.value.findIndex((item) => item.id === equipmentId)
+      if (idx !== -1) {
+        equipmentList.value[idx] = { ...equipmentList.value[idx], status, statusLabel }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  })
+}
 
 onMounted(async () => {
   await refreshEquipments()
   isLoading.value = false
+  connectMqtt()
 
   stompClient = new Client({
     webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
@@ -133,6 +176,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  mqttClient?.end(true)
+  mqttClient = null
   stompClient?.deactivate()
   stompClient = null
 })
@@ -154,9 +199,6 @@ const sortEquipment = (items) => {
   const sorted = [...items]
   if (sortOrder.value === '잔존 수명 높은 순') {
     return sorted.sort((a, b) => b.life - a.life)
-  }
-  if (sortOrder.value === '예상 교체 시기순') {
-    return sorted.sort((a, b) => a.replaceDate.localeCompare(b.replaceDate))
   }
   return sorted.sort((a, b) => a.life - b.life)
 }
@@ -210,7 +252,6 @@ const lifeColor = (life) => {
   return 'red'
 }
 
-const isUrgentDate = (date) => date <= '2024-09-30'
 </script>
 
 <template>
@@ -251,7 +292,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
               <select v-model="sortOrder" class="filter-select">
                 <option>잔존 수명 낮은 순</option>
                 <option>잔존 수명 높은 순</option>
-                <option>예상 교체 시기순</option>
               </select>
               <label class="search-box">
                 <span class="search-icon">⌕</span>
@@ -284,10 +324,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                     <div class="skel skel-life-value"></div>
                     <div class="skel skel-bar"></div>
                   </div>
-                  <div class="card-footer">
-                    <div class="skel skel-footer-item"></div>
-                    <div class="skel skel-footer-item"></div>
-                  </div>
                 </div>
               </div>
               <template v-else>
@@ -317,10 +353,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                         <i :class="lifeColor(item.life)" :style="{ width: item.life + '%' }"></i>
                       </div>
                     </div>
-                    <div class="card-footer">
-                      <span>예상 교체 시기</span>
-                      <strong :class="{ urgent: isUrgentDate(item.replaceDate) }">{{ item.replaceDate }}</strong>
-                    </div>
                   </article>
                 </div>
               </template>
@@ -336,7 +368,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                       <th>설비 유형</th>
                       <th>상태</th>
                       <th>잔존 수명</th>
-                      <th>예상 교체 시기</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -346,7 +377,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                         <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td-sm"></div></td>
-                        <td><div class="skel skel-td"></div></td>
                         <td><div class="skel skel-td"></div></td>
                       </tr>
                     </template>
@@ -371,7 +401,6 @@ const isUrgentDate = (date) => date <= '2024-09-30'
                           <strong :class="lifeColor(row.life)">{{ row.life }}%</strong>
                           <b class="track"><i :class="lifeColor(row.life)" :style="{ width: row.life + '%' }"></i></b>
                         </td>
-                        <td :class="{ urgent: isUrgentDate(row.replaceDate) }">{{ row.replaceDate }}</td>
                       </tr>
                     </template>
                   </tbody>
@@ -748,19 +777,29 @@ h2 {
   font-weight: 900;
 }
 
+.status-badge.unknown {
+  background: #f1f3f7;
+  color: #9aa8bc;
+}
+
 .status-badge.running {
   background: #e1f6ef;
   color: #12a985;
 }
 
 .status-badge.idle {
-  background: #fff0df;
-  color: #df7922;
+  background: #dbeafe;
+  color: #2563eb;
 }
 
 .status-badge.stop {
+  background: #fff0df;
+  color: #f97316;
+}
+
+.status-badge.alarm {
   background: #ffe7eb;
-  color: #fa2c45;
+  color: #ef4444;
 }
 
 .card-life {
@@ -888,9 +927,11 @@ h2 {
   vertical-align: middle;
 }
 
+.status-dot.unknown { background: #c5d0e0; }
 .status-dot.running { background: #14b993; }
-.status-dot.idle { background: #ff951a; }
-.status-dot.stop { background: #ff3045; }
+.status-dot.idle { background: #2563eb; }
+.status-dot.stop { background: #f97316; }
+.status-dot.alarm { background: #ef4444; }
 
 .life-cell {
   display: flex;
