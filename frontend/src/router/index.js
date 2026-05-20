@@ -47,6 +47,7 @@ const routes = [
     path: '/admin/permission',
     name: 'permission',
     component: Permission,
+    meta: { requiresAdmin: true },
   },
   {
     path: '/life',
@@ -62,14 +63,27 @@ const router = createRouter({
 
 const publicPages = ['/login', '/signup']
 
-router.beforeEach((to, from, next) => {
-  const authRequired = !publicPages.includes(to.path)
-  const token = localStorage.getItem('token')
-  if (authRequired && !token) {
-    next('/login')
-  } else {
-    next()
+const getStoredRole = () => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('user') || '{}').role ?? ''
+    return String(raw).toUpperCase().replace(/^ROLE_/, '')
+  } catch {
+    return ''
   }
+}
+
+router.beforeEach((to, from, next) => {
+  const token = localStorage.getItem('token')
+
+  if (!publicPages.includes(to.path) && !token) {
+    return next('/login')
+  }
+
+  if (to.meta.requiresAdmin && getStoredRole() !== 'ADMIN') {
+    return next('/dashboard')
+  }
+
+  next()
 })
 
 export default router
