@@ -151,28 +151,31 @@ public interface AlarmMapper {
 		SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS label, COUNT(*) AS value
 		FROM alarm_log
 		WHERE created_at IS NOT NULL
+		  AND equipment_id = #{equipmentId}
 		GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
 		ORDER BY MIN(created_at)
 		""")
-	List<AlarmStatisticsItem> countByDay();
+	List<AlarmStatisticsItem> countByDay(@Param("equipmentId") String equipmentId);
 
 	@Select("""
 		SELECT DATE_FORMAT(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d') AS label, COUNT(*) AS value
 		FROM alarm_log
 		WHERE created_at IS NOT NULL
+		  AND equipment_id = #{equipmentId}
 		GROUP BY DATE_FORMAT(DATE_SUB(created_at, INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d')
 		ORDER BY MIN(created_at)
 		""")
-	List<AlarmStatisticsItem> countByWeek();
+	List<AlarmStatisticsItem> countByWeek(@Param("equipmentId") String equipmentId);
 
 	@Select("""
 		SELECT DATE_FORMAT(created_at, '%Y-%m') AS label, COUNT(*) AS value
 		FROM alarm_log
 		WHERE created_at IS NOT NULL
+		  AND equipment_id = #{equipmentId}
 		GROUP BY DATE_FORMAT(created_at, '%Y-%m')
 		ORDER BY MIN(created_at)
 		""")
-	List<AlarmStatisticsItem> countByMonth();
+	List<AlarmStatisticsItem> countByMonth(@Param("equipmentId") String equipmentId);
 
 	@Select("""
 		<script>
