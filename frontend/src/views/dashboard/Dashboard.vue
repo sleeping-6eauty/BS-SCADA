@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import mqtt from 'mqtt'
+import { Client } from '@stomp/stompjs'
+import SockJS from 'sockjs-client'
 import AppTopbar from '@/components/AppTopbar.vue'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
@@ -28,14 +30,20 @@ const alarmLastFetchedAt = new Map()
 const ALARM_REFRESH_MS = 30000
 let mqttClient = null
 let runtimeTimer = null
+let stompClient = null
 
-const lifeRows = [
-  { rank: 1, name: '용접로봇1', type: '용접 로봇', life: 13, date: '2024-08-15', color: 'red' },
-  { rank: 2, name: '컨베이어3', type: '컨베이어', life: 28, date: '2024-11-02', color: 'orange' },
-  { rank: 3, name: '차체지그2', type: '차체 지그', life: 45, date: '2025-02-18', color: 'yellow' },
-  { rank: 4, name: '너트러너4', type: '너트러너', life: 60, date: '2025-05-30', color: 'green' },
-  { rank: 5, name: '비전검사기1', type: '비전 검사기', life: 78, date: '2025-08-22', color: 'green' },
-]
+const oeeAll = ref(null)
+const oeeByLine = ref({})
+const lifeRows = ref([])
+const isLifeLoading = ref(true)
+
+const activeOee = computed(() => {
+  if (selectedLine.value === '전체') return oeeAll.value
+  const lineNo = selectedLine.value.replace('Line', '')
+  return oeeByLine.value[lineNo] ?? null
+})
+
+const fmtPct = (v) => v != null ? (v * 100).toFixed(1) + '%' : '--'
 
 const normalizeStatus = (status) => {
   const normalized = String(status ?? '').toUpperCase()
@@ -156,13 +164,79 @@ const detailRows = computed(() => {
 
 const donutStyle = computed(() => {
   const t = oeeProgress.value
-  const p1 = (58 * t).toFixed(1)
-  const p2 = (78 * t).toFixed(1)
-  const p3 = (100 * t).toFixed(1)
+  if (!activeOee.value) {
+    return { background: `conic-gradient(#edf1f6 0 100%)` }
+  }
+  const { availability = 0, performance = 0, quality = 0, oee = 0 } = activeOee.value
+  const total = (availability + performance + quality) || 1
+  const oeeP = oee * 100
+  const p1 = ((availability / total) * oeeP * t).toFixed(1)
+  const p2 = (((availability + performance) / total) * oeeP * t).toFixed(1)
+  const p3 = (oeeP * t).toFixed(1)
   return {
     background: `conic-gradient(#1375de 0 ${p1}%, #e8892c ${p1}% ${p2}%, #1599b6 ${p2}% ${p3}%, #edf1f6 ${p3}% 100%)`,
   }
 })
+
+const startOeeAnimation = () => {
+  oeeProgress.value = 0
+  const duration = 1000
+  const start = performance.now()
+  const tick = (now) => {
+    const t = Math.min((now - start) / duration, 1)
+    oeeProgress.value = 1 - Math.pow(1 - t, 3)
+    if (t < 1) requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
+}
+
+const fetchOeeData = async () => {
+  try {
+    const [allRes, linesRes] = await Promise.all([
+      fetch(`${API_BASE}/api/dashboard/oee`, { headers: authHeaders() }),
+      fetch(`${API_BASE}/api/dashboard/lines/oee`, { headers: authHeaders() }),
+    ])
+    const allBody = await allRes.json().catch(() => ({}))
+    if (allRes.ok && allBody?.success && allBody?.data) {
+      oeeAll.value = allBody.data
+    }
+    const linesBody = await linesRes.json().catch(() => ({}))
+    if (linesRes.ok && linesBody?.success && Array.isArray(linesBody?.data)) {
+      const map = {}
+      for (const line of linesBody.data) {
+        map[String(line.lineNo)] = line
+      }
+      oeeByLine.value = map
+    }
+  } catch {
+    // 백엔드 미연결 시 유지
+  }
+}
+
+const fetchLifeRows = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/dashboard/equipment-status`, { headers: authHeaders() })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok || !body?.success || !Array.isArray(body?.data)) return
+    const sorted = body.data
+      .filter((e) => e.healthScore != null)
+      .sort((a, b) => a.healthScore - b.healthScore)
+      .slice(0, 5)
+    lifeRows.value = sorted.map((e, idx) => {
+      const life = Math.round(e.healthScore)
+      const color = life < 30 ? 'red' : life < 60 ? 'orange' : 'green'
+      return {
+        rank: idx + 1,
+        name: e.equipmentId ?? e.equipment_id ?? '',
+        type: e.equipmentType ?? e.equipment_type ?? '',
+        life,
+        color,
+      }
+    })
+  } catch {
+    // 백엔드 미연결 시 유지
+  }
+}
 
 const fetchAlarmMeta = async (equipmentId, force = false) => {
   if (!equipmentId) return
@@ -254,6 +328,21 @@ const connectMqtt = () => {
   })
 }
 
+const connectStomp = () => {
+  stompClient = new Client({
+    webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+    onConnect: () => {
+      stompClient.subscribe('/topic/dashboard/summary', async () => {
+        await Promise.all([fetchOeeData(), fetchLifeRows()])
+        startOeeAnimation()
+      })
+    },
+    onStompError: (frame) => console.error('STOMP 오류:', frame),
+    reconnectDelay: 5000,
+  })
+  stompClient.activate()
+}
+
 const startRuntimeTicker = () => {
   if (runtimeTimer) clearInterval(runtimeTimer)
 
@@ -290,17 +379,14 @@ const startRuntimeTicker = () => {
   }, 1000)
 }
 
-onMounted(() => {
-  const duration = 1000
-  const start = performance.now()
-  const tick = (now) => {
-    const t = Math.min((now - start) / duration, 1)
-    oeeProgress.value = 1 - Math.pow(1 - t, 3)
-    if (t < 1) requestAnimationFrame(tick)
-  }
-  requestAnimationFrame(tick)
+onMounted(async () => {
+  startOeeAnimation()
+  await Promise.all([fetchOeeData(), fetchLifeRows()])
+  isLifeLoading.value = false
+  startOeeAnimation()
   connectMqtt()
   startRuntimeTicker()
+  connectStomp()
 })
 
 onUnmounted(() => {
@@ -308,12 +394,15 @@ onUnmounted(() => {
     mqttClient.end(true)
     mqttClient = null
   }
-
   if (runtimeTimer) {
     clearInterval(runtimeTimer)
     runtimeTimer = null
   }
+  stompClient?.deactivate()
+  stompClient = null
 })
+
+watch(selectedLine, startOeeAnimation)
 </script>
 
 <template>
@@ -345,28 +434,28 @@ onUnmounted(() => {
           </div>
           <div class="oee-body">
             <div class="donut" :style="donutStyle">
-              <span><b>62.5%</b></span>
+              <span><b>{{ fmtPct(activeOee?.oee) }}</b></span>
             </div>
             <div class="oee-info">
               <div class="oee-metric">
                 <span class="metric-label"><i class="dot blue"></i>가동률</span>
-                <strong class="metric-val">89.2%</strong>
+                <strong class="metric-val">{{ fmtPct(activeOee?.availability) }}</strong>
               </div>
               <div class="oee-operator">×</div>
               <div class="oee-metric">
                 <span class="metric-label"><i class="dot orange"></i>성능률</span>
-                <strong class="metric-val">87.5%</strong>
+                <strong class="metric-val">{{ fmtPct(activeOee?.performance) }}</strong>
               </div>
               <div class="oee-operator">×</div>
               <div class="oee-metric">
                 <span class="metric-label"><i class="dot cyan"></i>품질률</span>
-                <strong class="metric-val">80.1%</strong>
+                <strong class="metric-val">{{ fmtPct(activeOee?.quality) }}</strong>
               </div>
               <div class="oee-result-row">
                 <div class="oee-equals">=</div>
                 <div class="oee-total">
                   <span>OEE (종합설비효율)</span>
-                  <strong>62.5%</strong>
+                  <strong>{{ fmtPct(activeOee?.oee) }}</strong>
                 </div>
               </div>
             </div>
@@ -375,7 +464,7 @@ onUnmounted(() => {
 
         <article class="panel life-card">
           <div class="panel-header">
-            <h2>설비별 잔존 수명 (상위 5)</h2>
+            <h2>설비별 잔존 수명 (하위 5)</h2>
             <button type="button" class="more-btn" @click="router.push('/life')">더보기 ›</button>
           </div>
           <table class="data-table life-table">
@@ -389,12 +478,25 @@ onUnmounted(() => {
               <tr><th>순위</th><th>설비명</th><th>설비 유형</th><th>잔존 수명</th></tr>
             </thead>
             <tbody>
-              <tr v-for="row in lifeRows" :key="row.rank">
-                <td>{{ row.rank }}</td>
-                <td>{{ row.name }}</td>
-                <td>{{ row.type }}</td>
-                <td class="life-cell"><b class="track"><i :class="row.color" :style="{ width: row.life + '%' }"></i></b><strong :class="row.color">{{ row.life }}%</strong></td>
-              </tr>
+              <template v-if="isLifeLoading">
+                <tr v-for="n in 5" :key="n" class="skel-row">
+                  <td><div class="skel skel-td-xs"></div></td>
+                  <td><div class="skel skel-td-sm"></div></td>
+                  <td><div class="skel skel-td-sm"></div></td>
+                  <td><div class="skel skel-td-full"></div></td>
+                </tr>
+              </template>
+              <template v-else>
+                <tr v-if="lifeRows.length === 0">
+                  <td colspan="4" class="empty-row">데이터가 없습니다.</td>
+                </tr>
+                <tr v-for="row in lifeRows" :key="row.rank">
+                  <td>{{ row.rank }}</td>
+                  <td>{{ row.name }}</td>
+                  <td>{{ row.type }}</td>
+                  <td class="life-cell"><b class="track"><i :class="row.color" :style="{ width: row.life + '%' }"></i></b><strong :class="row.color">{{ row.life }}%</strong></td>
+                </tr>
+              </template>
             </tbody>
           </table>
         </article>
@@ -533,4 +635,20 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .more-btn { border: 0; background: transparent; color: #0d2448; font-weight: 950; cursor: pointer; }
 
 @media (max-width: 1280px) { .dashboard-page { min-width: 1200px; } }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skel {
+  background: linear-gradient(90deg, #e8edf4 25%, #f0f4f9 50%, #e8edf4 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 4px;
+  display: block;
+}
+.skel-row td { vertical-align: middle; }
+.skel-td-xs { height: 14px; width: 24px; margin: 0 auto; }
+.skel-td-sm { height: 14px; width: 70%; margin: 0 auto; }
+.skel-td-full { height: 14px; width: 90%; margin: 0 auto; }
 </style>
