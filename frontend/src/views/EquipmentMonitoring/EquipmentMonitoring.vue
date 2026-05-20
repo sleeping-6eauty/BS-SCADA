@@ -151,7 +151,6 @@
           <section class="info-card detail-card">
             <div class="side-header">
               <h3>설비 상세 정보</h3>
-              <button type="button" @click="goToEquipmentDetail">더보기 ›</button>
             </div>
 
             <div class="detail-header">
@@ -178,50 +177,60 @@
                 <span>{{ controlStatusText }}</span>
               </div>
               <div class="control-grid">
+                <!-- 주파수 카드 -->
                 <div class="control-box frequency-control">
                   <span>주파수</span>
-                  <div class="frequency-input-row">
-                    <input
-                      v-model.number="frequencyDraft"
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label="컨베이어 주파수"
-                      :disabled="!isConveyorControlSupported"
-                    />
-                    <strong>Hz</strong>
-                  </div>
-                  <button
-                    type="button"
-                    class="confirm-button"
-                    :disabled="!isConveyorControlSupported"
-                    @click="confirmConveyorFrequency"
-                  >
-                    확인
-                  </button>
+                  <template v-if="inverterEditMode.frequency">
+                    <div class="frequency-input-row">
+                      <input
+                        v-model.number="frequencyDraft"
+                        type="number"
+                        min="1"
+                        step="1"
+                        aria-label="컨베이어 주파수"
+                      />
+                      <strong>Hz</strong>
+                    </div>
+                    <div class="edit-actions">
+                      <button type="button" class="apply-button" @click="applyFrequency">확인</button>
+                      <button type="button" class="cancel-button" @click="cancelEditFrequency">취소</button>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <strong class="control-value">{{ currentConveyorControl.frequency }} Hz</strong>
+                    <button type="button" class="edit-button" @click="startEditFrequency">수정</button>
+                  </template>
                 </div>
+
+                <!-- 가동 여부 카드 -->
                 <div class="control-box">
-                  <span>회전 여부</span>
+                  <span>가동 여부</span>
+                  <div class="state-display" :class="{ active: currentConveyorControl.rotating }">
+                    {{ currentConveyorControl.rotating ? '가동 중' : '정지' }}
+                  </div>
                   <button
                     type="button"
                     class="state-button"
                     :class="{ active: currentConveyorControl.rotating }"
-                    :disabled="!isConveyorControlSupported"
                     @click="turnOnConveyor"
                   >
-                    {{ currentConveyorControl.rotating ? '회전 중' : '회전 시작' }}
+                    가동 시작
                   </button>
                 </div>
+
+                <!-- 정지 여부 카드 -->
                 <div class="control-box">
                   <span>정지 여부</span>
+                  <div class="state-display stop" :class="{ active: currentConveyorControl.stopped }">
+                    {{ currentConveyorControl.stopped ? '정지 중' : '가동 중' }}
+                  </div>
                   <button
                     type="button"
                     class="state-button stop"
                     :class="{ active: currentConveyorControl.stopped }"
-                    :disabled="!isConveyorControlSupported"
                     @click="turnOffConveyor"
                   >
-                    {{ currentConveyorControl.stopped ? '정지 중' : '정지' }}
+                    정지
                   </button>
                 </div>
               </div>
@@ -431,6 +440,9 @@ const conveyorControls = reactive({
   'CNV-003': { frequency: 40, rotating: true, stopped: false },
 })
 const frequencyDraft = ref(0)
+const rotationDraft = ref(false)
+const stopDraft = ref(false)
+const inverterEditMode = reactive({ frequency: false, rotation: false, stop: false })
 const controlStatusText = ref('상태 확인 전')
 
 const statusCodeMap = {
@@ -620,6 +632,39 @@ const selectEquipmentRow = (row) => {
   }
 }
 
+const startEditFrequency = () => {
+  frequencyDraft.value = currentConveyorControl.value.frequency || 1
+  inverterEditMode.frequency = true
+}
+const cancelEditFrequency = () => {
+  frequencyDraft.value = currentConveyorControl.value.frequency || 1
+  inverterEditMode.frequency = false
+}
+const applyFrequency = async () => {
+  await confirmConveyorFrequency()
+  inverterEditMode.frequency = false
+}
+
+const startEditRotation = () => {
+  rotationDraft.value = currentConveyorControl.value.rotating
+  inverterEditMode.rotation = true
+}
+const cancelEditRotation = () => { inverterEditMode.rotation = false }
+const applyRotation = async () => {
+  if (rotationDraft.value) await turnOnConveyor()
+  inverterEditMode.rotation = false
+}
+
+const startEditStop = () => {
+  stopDraft.value = currentConveyorControl.value.stopped
+  inverterEditMode.stop = true
+}
+const cancelEditStop = () => { inverterEditMode.stop = false }
+const applyStop = async () => {
+  if (stopDraft.value) await turnOffConveyor()
+  inverterEditMode.stop = false
+}
+
 const goToEquipmentDetail = () => {
   const id = selectedEquipment.value?.equipment_id ?? selectedEquipment.value?.id
   router.push({ name: 'equipment-detail', query: id ? { id } : {} })
@@ -648,7 +693,7 @@ const confirmConveyorFrequency = () => {
 
   const nextFrequency = Number(frequencyDraft.value)
   if (!Number.isFinite(nextFrequency)) return
-  conveyorControls[id].frequency = Math.max(nextFrequency, 0)
+  conveyorControls[id].frequency = Math.max(nextFrequency, 1)
 }
 
 const setConveyorRotationState = (id, rotating) => {
@@ -665,7 +710,9 @@ const applyControlStatus = (equipmentId, data) => {
   setConveyorRotationState(equipmentId, status === 'RUN')
   if (Number.isFinite(lastFrequency)) {
     conveyorControls[equipmentId].frequency = lastFrequency
-    if (selectedEquipment.value?.id === equipmentId) frequencyDraft.value = lastFrequency
+    if (selectedEquipment.value?.id === equipmentId && !inverterEditMode.frequency) {
+      frequencyDraft.value = lastFrequency
+    }
   }
 }
 
@@ -705,9 +752,12 @@ const turnOnConveyor = async () => {
   }
 
   confirmConveyorFrequency()
-  // 낙관적 업데이트: API 응답과 무관하게 즉시 UI 반영
   setConveyorRotationState(id, true)
-  controlStatusText.value = '회전 명령 전송 중'
+  // 레이아웃 노드 + 선택된 설비 상태 즉시 반영
+  const convOnStation = productionLines.flatMap((l) => [l.conveyor, ...l.stations]).find((s) => s.id === id)
+  if (convOnStation) convOnStation.status = 'running'
+  if (selectedEquipment.value?.id === id) selectedEquipment.value = { ...selectedEquipment.value, status: 'running' }
+  controlStatusText.value = '가동 명령 전송 중'
 
   try {
     const res = await fetchWithTimeout(
@@ -721,10 +771,9 @@ const turnOnConveyor = async () => {
     )
     const body = await safeParseJson(res)
     if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`)
-    controlStatusText.value = '회전 명령 완료'
+    controlStatusText.value = '가동 명령 완료'
   } catch (err) {
-    // 타임아웃이나 네트워크 에러여도 Node-RED가 이미 명령을 받았을 수 있으므로 로컬 상태 유지
-    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '회전 명령 실패 (로컬 적용)'
+    controlStatusText.value = err.name === 'AbortError' ? '연결 타임아웃 (로컬 적용)' : '가동 명령 실패 (로컬 적용)'
     console.warn('Failed to turn on conveyor:', err)
   }
 }
@@ -737,14 +786,16 @@ const turnOffConveyor = async () => {
     return
   }
 
-  // 낙관적 업데이트
   setConveyorRotationState(id, false)
+  const convOffStation = productionLines.flatMap((l) => [l.conveyor, ...l.stations]).find((s) => s.id === id)
+  if (convOffStation) convOffStation.status = 'stop'
+  if (selectedEquipment.value?.id === id) selectedEquipment.value = { ...selectedEquipment.value, status: 'stop' }
   controlStatusText.value = '정지 명령 전송 중'
 
   try {
     const res = await fetchWithTimeout(
       `${API_BASE}/api/equipments/${encodeURIComponent(id)}/control/off`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() } },
+      { method: 'POST', headers: authHeaders() },
       5000,
     )
     const body = await safeParseJson(res)
@@ -1029,13 +1080,22 @@ onMounted(async () => {
 })
 
 // 선택 설비가 바뀌면 로그 데이터 로드
-watch(selectedEquipment, async (newEquipment) => {
+watch(selectedEquipment, async (newEquipment, oldEquipment) => {
   if (!newEquipment || !newEquipment.id) return
 
+  const idChanged = newEquipment.id !== oldEquipment?.id
+
   if (newEquipment.layoutType === 'cnv') {
-    const control = conveyorControls[newEquipment.id]
-    frequencyDraft.value = control?.frequency ?? 0
-    fetchConveyorControlStatus(newEquipment.id)
+    if (idChanged) {
+      // 설비가 바뀔 때만 편집 모드 초기화 + 상태 조회
+      inverterEditMode.frequency = false
+      inverterEditMode.rotation = false
+      inverterEditMode.stop = false
+      const control = conveyorControls[newEquipment.id]
+      frequencyDraft.value = control?.frequency ?? 1
+      fetchConveyorControlStatus(newEquipment.id)
+    }
+    return  // MQTT 업데이트 등 동일 ID 재실행은 이하 로직 불필요
   }
   
   try {
@@ -2212,11 +2272,77 @@ tbody tr {
   border-color: #fa2c45;
 }
 
-.confirm-button:disabled,
-.state-button:disabled,
-.frequency-input-row input:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
+.control-value {
+  display: block;
+  margin: 6px 0 8px;
+  font-size: 20px;
+  font-weight: 950;
+  color: #0d2448;
+}
+
+.state-display {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0 8px;
+  border-radius: 7px;
+  background: #f0f3f7;
+  color: #627087;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.state-display.active {
+  background: #e7f8ef;
+  color: #11a765;
+}
+
+.state-display.stop.active {
+  background: #ffecec;
+  color: #ff3030;
+}
+
+.edit-button {
+  width: 100%;
+  height: 30px;
+  border: 1px solid #c8d6e8;
+  border-radius: 7px;
+  background: #f0f5fb;
+  color: #2d4a6e;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.apply-button {
+  flex: 1;
+  height: 30px;
+  border: 1px solid #073c7b;
+  border-radius: 7px;
+  background: #073c7b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.cancel-button {
+  flex: 1;
+  height: 30px;
+  border: 1px solid #c8d6e8;
+  border-radius: 7px;
+  background: #fff;
+  color: #627087;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 .metrics-grid {
@@ -2251,8 +2377,10 @@ tbody tr {
   display: grid;
   gap: 10px;
   margin: 12px 0 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   list-style: none;
+  max-height: 136px;
+  overflow-y: auto;
 }
 
 .recent-alarm-list li {
