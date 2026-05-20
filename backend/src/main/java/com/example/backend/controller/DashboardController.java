@@ -5,6 +5,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,11 +30,14 @@ public class DashboardController {
 
     private final DashboardService dashboardService;
     private final EquipmentService equipmentService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Autowired
-    public DashboardController(DashboardService dashboardService, EquipmentService equipmentService) {
+    public DashboardController(DashboardService dashboardService, EquipmentService equipmentService,
+            SimpMessagingTemplate messagingTemplate) {
         this.dashboardService = dashboardService;
         this.equipmentService = equipmentService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     // GET /api/dashboard/overview?lineNo=1&from=...&to=...
@@ -77,6 +81,7 @@ public class DashboardController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         SummaryGenerateResponse response = dashboardService.generateSummaries(from, to);
+        messagingTemplate.convertAndSend("/topic/dashboard/summary", response);
         return ResponseEntity.ok(new ApiResponse<>(true, "Summary generation completed", response));
     }
 
@@ -126,12 +131,23 @@ public class DashboardController {
         return ResponseEntity.ok(new ApiResponse<>(true, "Layout equipment status retrieved", responses));
     }
 
+    // GET /api/dashboard/oee?from=...&to=...  — 전체 라인 OEE/가동률/성능률/품질률 평균
     @GetMapping("/oee")
-    public ResponseEntity<ApiResponse<Double>> getOee(
+    public ResponseEntity<ApiResponse<LineOeeDto>> getOee(
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
-        DashboardOverviewDto overview = dashboardService.getOverview(null, from, to);
-        double averageOee = overview != null ? overview.getOee() : 0.0;
-        return ResponseEntity.ok(new ApiResponse<>(true, "OEE metric retrieved", averageOee));
+        List<LineOeeDto> lineOees = dashboardService.getLineOee(from, to);
+        int n = lineOees.size();
+        LineOeeDto total = new LineOeeDto();
+        total.setLineNo("ALL");
+        if (n > 0) {
+            total.setOee(         lineOees.stream().mapToDouble(LineOeeDto::getOee).average().orElse(0.0));
+            total.setAvailability(lineOees.stream().mapToDouble(LineOeeDto::getAvailability).average().orElse(0.0));
+            total.setPerformance( lineOees.stream().mapToDouble(LineOeeDto::getPerformance).average().orElse(0.0));
+            total.setQuality(     lineOees.stream().mapToDouble(LineOeeDto::getQuality).average().orElse(0.0));
+            total.setFrom(lineOees.get(0).getFrom());
+            total.setTo(lineOees.get(0).getTo());
+        }
+        return ResponseEntity.ok(new ApiResponse<>(true, "OEE metric retrieved", total));
     }
 }

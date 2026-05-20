@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>WebSocket Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    h2 { color: #4ec9b0; }
+    button { margin: 4px; padding: 8px 16px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; }
+    #connectBtn  { background: #4ec9b0; color: #000; }
+    #disconnectBtn { background: #f44747; color: #fff; }
+    #triggerBtn  { background: #569cd6; color: #fff; }
+    #log { margin-top: 16px; padding: 12px; background: #252526; border-radius: 4px;
+           height: 400px; overflow-y: auto; white-space: pre-wrap; font-size: 13px; }
+    .info  { color: #569cd6; }
+    .ok    { color: #4ec9b0; }
+    .msg   { color: #dcdcaa; }
+    .error { color: #f44747; }
+    #status { display: inline-block; margin-left: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h2>WebSocket Test — /topic/dashboard/summary</h2>
+
+  <button id="connectBtn"    onclick="connect()">Connect</button>
+  <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+  <button id="triggerBtn"    onclick="triggerGenerate()" disabled>
+    POST /summaries/generate (trigger broadcast)
+  </button>
+  <span id="status">● 미연결</span>
+
+  <div id="log"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+  <script>
+    let client = null;
+
+    function log(msg, cls = 'info') {
+      const el = document.getElementById('log');
+      const ts = new Date().toLocaleTimeString();
+      el.innerHTML += `<span class="${cls}">[${ts}] ${msg}</span>\n`;
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setStatus(text, color) {
+      const s = document.getElementById('status');
+      s.textContent = '● ' + text;
+      s.style.color = color;
+    }
+
+    function connect() {
+      client = new StompJs.Client({
+        webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
+        reconnectDelay: 0,
+
+        onConnect: () => {
+          log('Connected!', 'ok');
+          setStatus('연결됨', '#4ec9b0');
+          document.getElementById('connectBtn').disabled = true;
+          document.getElementById('disconnectBtn').disabled = false;
+          document.getElementById('triggerBtn').disabled = false;
+
+          client.subscribe('/topic/dashboard/summary', (message) => {
+            const data = JSON.parse(message.body);
+            log('📨 Received:\n' + JSON.stringify(data, null, 2), 'msg');
+          });
+
+          log('Subscribed to /topic/dashboard/summary', 'info');
+        },
+
+        onDisconnect: () => {
+          log('Disconnected', 'error');
+          setStatus('미연결', '#f44747');
+          document.getElementById('connectBtn').disabled = false;
+          document.getElementById('disconnectBtn').disabled = true;
+          document.getElementById('triggerBtn').disabled = true;
+        },
+
+        onStompError: (frame) => {
+          log('STOMP error: ' + frame.headers.message, 'error');
+        },
+      });
+
+      log('Connecting to ws://localhost:8080/ws ...', 'info');
+      client.activate();
+    }
+
+    function disconnect() {
+      if (client) client.deactivate();
+    }
+
+    async function triggerGenerate() {
+      log('POST /api/dashboard/summaries/generate ...', 'info');
+      try {
+        const res = await fetch('http://localhost:8080/api/dashboard/summaries/generate', {
+          method: 'POST',
+        });
+        const json = await res.json();
+        log('HTTP Response:\n' + JSON.stringify(json, null, 2), 'ok');
+        log('→ WebSocket 메시지가 위에 수신되면 정상입니다.', 'info');
+      } catch (e) {
+        log('HTTP Error: ' + e.message, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

@@ -17,6 +17,11 @@ public class CorsConfig {
 					.allowedOrigins("http://localhost:5173", "http://127.0.0.1:5173")
 					.allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 					.allowedHeaders("*");
+
+				registry.addMapping("/ws/**")
+					.allowedOrigins("*")
+					.allowedMethods("GET", "POST", "OPTIONS")
+					.allowedHeaders("*");
 			}
 		};
 	}

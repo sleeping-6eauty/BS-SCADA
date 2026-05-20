@@ -29,6 +29,41 @@
     </select>
 
     <!-- ============================================================
+         Line Status Duration (equipment JOIN — all equipment in line)
+         end_time IS NULL = 진행 중인 구간 → #{to}로 처리
+         ============================================================ -->
+    <select id="getLineStatusDurations" resultType="map">
+        <![CDATA[
+        SELECT
+            IFNULL(SUM(CASE WHEN s.status = 'RUN' THEN
+                TIMESTAMPDIFF(SECOND,
+                    GREATEST(s.start_time, #{from}),
+                    LEAST(IFNULL(s.end_time, #{to}), #{to}))
+            ELSE 0 END), 0) AS run_time_sec,
+            IFNULL(SUM(CASE WHEN s.status = 'IDLE' THEN
+                TIMESTAMPDIFF(SECOND,
+                    GREATEST(s.start_time, #{from}),
+                    LEAST(IFNULL(s.end_time, #{to}), #{to}))
+            ELSE 0 END), 0) AS idle_time_sec,
+            IFNULL(SUM(CASE WHEN s.status = 'STOP' THEN
+                TIMESTAMPDIFF(SECOND,
+                    GREATEST(s.start_time, #{from}),
+                    LEAST(IFNULL(s.end_time, #{to}), #{to}))
+            ELSE 0 END), 0) AS stop_time_sec,
+            IFNULL(SUM(CASE WHEN s.status = 'ALARM' THEN
+                TIMESTAMPDIFF(SECOND,
+                    GREATEST(s.start_time, #{from}),
+                    LEAST(IFNULL(s.end_time, #{to}), #{to}))
+            ELSE 0 END), 0) AS alarm_time_sec
+        FROM equipment_status_log s
+        JOIN equipment e ON s.equipment_id = e.equipment_id
+        WHERE e.line_no = #{lineNo}
+          AND s.start_time < #{to}
+          AND IFNULL(s.end_time, #{to}) > #{from}
+        ]]>
+    </select>
+
+    <!-- ============================================================
          Vision Quality Counts
          ============================================================ -->
     <select id="getVisionQualityCounts" resultType="map">
@@ -94,7 +129,7 @@
     </insert>
 
     <!-- ============================================================
-         Equipment Failure Count
+         Equipment Failure Count (overlap 기준, from~to 구간)
          ============================================================ -->
     <select id="getEquipmentFailureCount" resultType="int">
         <![CDATA[
@@ -102,8 +137,41 @@
         FROM equipment_status_log
         WHERE equipment_id = #{equipmentId}
           AND status = 'ALARM'
-          AND start_time >= #{from}
           AND start_time < #{to}
+          AND IFNULL(end_time, #{to}) > #{from}
+        ]]>
+    </select>
+
+    <!-- ============================================================
+         7-day Rolling Stats for MTTF/MTTR/MTBF
+         ============================================================ -->
+    <select id="getFailureCount7d" resultType="int">
+        <![CDATA[
+        SELECT COUNT(*)
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'ALARM'
+          AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ]]>
+    </select>
+
+    <select id="getRunTimeSec7d" resultType="java.lang.Long">
+        <![CDATA[
+        SELECT IFNULL(SUM(duration_sec), 0)
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'RUN'
+          AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ]]>
+    </select>
+
+    <select id="getAlarmTimeSec7d" resultType="java.lang.Long">
+        <![CDATA[
+        SELECT IFNULL(SUM(duration_sec), 0)
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+          AND status = 'ALARM'
+          AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ]]>
     </select>
 
@@ -111,10 +179,17 @@
          Accumulated Run Hours (all time)
          ============================================================ -->
     <select id="getTotalAccumulatedRunHours" resultType="java.lang.Double">
-        SELECT IFNULL(SUM(duration_sec), 0) / 3600.0
+        <![CDATA[
+        SELECT (
+            IFNULL(SUM(CASE WHEN end_time IS NOT NULL THEN duration_sec ELSE 0 END), 0)
+            + IFNULL(SUM(CASE WHEN end_time IS NULL
+                              THEN TIMESTAMPDIFF(SECOND, start_time, NOW())
+                              ELSE 0 END), 0)
+        ) / 3600.0
         FROM equipment_status_log
         WHERE equipment_id = #{equipmentId}
           AND status = 'RUN'
+        ]]>
     </select>
 
     <!-- ============================================================
@@ -128,6 +203,17 @@
           AND status = 'RUN'
           AND start_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         ]]>
+    </select>
+
+    <!-- ============================================================
+         Latest equipment status (single equipment)
+         ============================================================ -->
+    <select id="getLatestEquipmentStatus" resultType="string">
+        SELECT status
+        FROM equipment_status_log
+        WHERE equipment_id = #{equipmentId}
+        ORDER BY start_time DESC
+        LIMIT 1
     </select>
 
     <!-- ============================================================
