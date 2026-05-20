@@ -1,42 +1,33 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import mqtt from 'mqtt'
 import AppTopbar from '@/components/AppTopbar.vue'
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080'
 const router = useRouter()
 const selectedLine = ref('전체')
 const oeeProgress = ref(0)
 
-const summaryCards = [
-  { title: '총 설비 수', value: 21, unit: '대', icon: '🏭', tone: 'blue' },
-  { title: '가동 설비 수', value: 15, unit: '대', icon: '▶️', tone: 'green' },
-  { title: '정지 설비 수', value: 4, unit: '대', icon: '⏸️', tone: 'orange' },
-  { title: '알람 발생 수', value: 2, unit: '건', icon: '🚨', tone: 'red' },
-]
+const defaultBrokerUrl = (() => {
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    return 'wss://broker.mqttdashboard.com:8884/mqtt'
+  }
+  return 'ws://broker.mqttdashboard.com:8000/mqtt'
+})()
 
-const equipmentRows = [
-  { name: 'Welding Robot 1', status: 'Running', uptime: '18:35:22', alarm: '2024-05-24 09:12', check: '2024-05-20' },
-  { name: 'Welding Robot 2', status: 'Running', uptime: '17:20:11', alarm: '-', check: '2024-05-21' },
-  { name: 'Conveyor 1', status: 'Idle', uptime: '05:12:08', alarm: '-', check: '2024-05-18' },
-  { name: 'Conveyor 2', status: 'Error', uptime: '20:12:45', alarm: '2024-05-24 07:58', check: '2024-05-19' },
-  { name: 'Conveyor 3', status: 'Running', uptime: '12:48:21', alarm: '-', check: '2024-05-22' },
-  { name: 'Nutrunner 1', status: 'Running', uptime: '08:16:43', alarm: '-', check: '2024-05-19' },
-  { name: 'Nutrunner 2', status: 'Idle', uptime: '06:41:30', alarm: '-', check: '2024-05-17' },
-  { name: 'Nutrunner 3', status: 'Running', uptime: '11:03:09', alarm: '-', check: '2024-05-18' },
-  { name: 'Nutrunner 4', status: 'Error', uptime: '02:45:33', alarm: '2024-05-24 06:47', check: '2024-05-17' },
-  { name: 'Body Jig 1', status: 'Running', uptime: '16:22:18', alarm: '-', check: '2024-05-20' },
-  { name: 'Body Jig 2', status: 'Error', uptime: '03:18:26', alarm: '2024-05-24 08:21', check: '2024-05-16' },
-  { name: 'Body Jig 3', status: 'Running', uptime: '14:12:08', alarm: '-', check: '2024-05-18' },
-  { name: 'Vision 1', status: 'Running', uptime: '09:44:53', alarm: '-', check: '2024-05-21' },
-  { name: 'Vision 2', status: 'Idle', uptime: '07:31:41', alarm: '-', check: '2024-05-19' },
-  { name: 'AGV 1', status: 'Running', uptime: '08:40:12', alarm: '-', check: '2024-05-16' },
-  { name: 'AGV 2', status: 'Running', uptime: '10:26:51', alarm: '-', check: '2024-05-21' },
-  { name: 'PLC Panel 1', status: 'Running', uptime: '22:05:16', alarm: '-', check: '2024-05-22' },
-  { name: 'PLC Panel 2', status: 'Running', uptime: '21:18:44', alarm: '-', check: '2024-05-20' },
-  { name: 'Temperature Sensor 1', status: 'Running', uptime: '19:11:05', alarm: '-', check: '2024-05-20' },
-  { name: 'Current Sensor 1', status: 'Idle', uptime: '04:22:31', alarm: '-', check: '2024-05-18' },
-  { name: 'Press Unit 1', status: 'Error', uptime: '01:15:24', alarm: '2024-05-24 07:58', check: '2024-05-18' },
-]
+const rawBrokerUrl = import.meta.env.VITE_MQTT_BROKER_URL ?? defaultBrokerUrl
+const topicFilter = import.meta.env.VITE_MQTT_TOPIC ?? 'factory/equipment/+/realtime'
+const mqttUsername = import.meta.env.VITE_MQTT_USERNAME
+const mqttPassword = import.meta.env.VITE_MQTT_PASSWORD
+
+const equipmentRealtimeMap = ref({})
+const alarmMetaByEquipment = ref({})
+const alarmFetchInFlight = new Set()
+const alarmLastFetchedAt = new Map()
+const ALARM_REFRESH_MS = 30000
+let mqttClient = null
+let runtimeTimer = null
 
 const lifeRows = [
   { rank: 1, name: '용접로봇1', type: '용접 로봇', life: 13, date: '2024-08-15', color: 'red' },
@@ -45,6 +36,123 @@ const lifeRows = [
   { rank: 4, name: '너트러너4', type: '너트러너', life: 60, date: '2025-05-30', color: 'green' },
   { rank: 5, name: '비전검사기1', type: '비전 검사기', life: 78, date: '2025-08-22', color: 'green' },
 ]
+
+const normalizeStatus = (status) => {
+  const normalized = String(status ?? '').toUpperCase()
+  if (normalized === 'RUN') return 'RUN'
+  if (normalized === 'STOP') return 'STOP'
+  if (normalized === 'ALARM') return 'ALARM'
+  return 'UNKNOWN'
+}
+
+const parseTopicEquipmentId = (topic) => {
+  const match = /^factory\/equipment\/([^/]+)\/realtime$/i.exec(topic ?? '')
+  return match?.[1] ?? ''
+}
+
+const toNonNegativeNumber = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  return numeric
+}
+
+const parsePayload = (buffer) => {
+  try {
+    const parsed = JSON.parse(buffer.toString())
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const authHeaders = () => {
+  const token = localStorage.getItem('token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+const toMillis = (value) => {
+  if (!value) return 0
+  const normalized = String(value).replace(' ', 'T')
+  const parsed = Date.parse(normalized)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const text = String(value)
+  return text.includes('T') ? text.replace('T', ' ').slice(0, 19) : text.slice(0, 19)
+}
+
+const formatRuntime = (value) => {
+  const sec = Math.floor(toNonNegativeNumber(value))
+  const hh = String(Math.floor(sec / 3600)).padStart(2, '0')
+  const mm = String(Math.floor((sec % 3600) / 60)).padStart(2, '0')
+  const ss = String(sec % 60).padStart(2, '0')
+  return `${hh}:${mm}:${ss}`
+}
+
+const resolveBrokerUrlForBrowser = (rawUrl) => {
+  const value = String(rawUrl ?? '').trim()
+  if (!value) return defaultBrokerUrl
+
+  const normalizeHost = (hostname) => {
+    const lower = String(hostname ?? '').toLowerCase()
+    if (lower === 'mqtt-dashboard.com') return 'broker.mqttdashboard.com'
+    if (lower === 'broker.mqtt-dashboard.com') return 'broker.mqttdashboard.com'
+    return hostname
+  }
+
+  if (/^(wss?|mqtts?):\/\//i.test(value)) {
+    const source = new URL(value)
+    const protocol = source.protocol.toLowerCase()
+    const isSecure = protocol === 'wss:' || protocol === 'mqtts:'
+    source.hostname = normalizeHost(source.hostname)
+    source.protocol = isSecure ? 'wss:' : 'ws:'
+    if (!source.port) source.port = isSecure ? '8884' : '8000'
+    if (!isSecure && source.port === '1883') source.port = '8000'
+    if (isSecure && source.port === '8883') source.port = '8884'
+    if (!source.pathname || source.pathname === '/') source.pathname = '/mqtt'
+    return source.href
+  }
+
+  // host[:port] 형태 입력 대응
+  const normalizedInput = value
+    .replace(/^mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+    .replace(/^broker\.mqtt-dashboard\.com(:|$)/i, 'broker.mqttdashboard.com$1')
+  const url = new URL(`ws://${normalizedInput}`)
+  if (!url.port || url.port === '1883') url.port = '8000'
+  if (!url.pathname || url.pathname === '/') url.pathname = '/mqtt'
+  return url.href
+}
+
+const realtimeRows = computed(() => {
+  const rows = Object.values(equipmentRealtimeMap.value)
+  rows.sort((a, b) => a.equipment_id.localeCompare(b.equipment_id))
+  return rows
+})
+
+const totalEquipmentCount = computed(() => realtimeRows.value.length)
+const runningEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'RUN').length)
+const stoppedEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'STOP').length)
+const alarmEquipmentCount = computed(() => realtimeRows.value.filter((row) => row.status === 'ALARM').length)
+
+const summaryCards = computed(() => ([
+  { title: '총 설비 수', value: totalEquipmentCount.value, unit: '대', icon: '🏭', tone: 'blue' },
+  { title: '가동 설비 수', value: runningEquipmentCount.value, unit: '대', icon: '▶', tone: 'green' },
+  { title: '정지 설비 수', value: stoppedEquipmentCount.value, unit: '대', icon: 'Ⅱ', tone: 'orange' },
+  { title: '알람 발생 수', value: alarmEquipmentCount.value, unit: '건', icon: '🚨', tone: 'red' },
+]))
+
+const detailRows = computed(() => {
+  return realtimeRows.value.map((row) => ({
+    equipment_id: row.equipment_id,
+    status: row.status,
+    accumulated_run_hours: row.accumulated_run_hours,
+    runtimeText: formatRuntime(row.accumulated_run_hours),
+    recentAlarmAt: alarmMetaByEquipment.value[row.equipment_id]?.recentAlarmAt ?? '-',
+    lastActionAt: alarmMetaByEquipment.value[row.equipment_id]?.lastActionAt ?? '-',
+  }))
+})
 
 const donutStyle = computed(() => {
   const t = oeeProgress.value
@@ -56,16 +164,155 @@ const donutStyle = computed(() => {
   }
 })
 
+const fetchAlarmMeta = async (equipmentId, force = false) => {
+  if (!equipmentId) return
+  if (alarmFetchInFlight.has(equipmentId)) return
+
+  const now = Date.now()
+  const lastFetch = alarmLastFetchedAt.get(equipmentId) ?? 0
+  if (!force && now - lastFetch < ALARM_REFRESH_MS) return
+
+  alarmFetchInFlight.add(equipmentId)
+  try {
+    const res = await fetch(`${API_BASE}/api/alarms/${encodeURIComponent(equipmentId)}`, {
+      headers: authHeaders(),
+    })
+    const body = await res.json()
+    if (!res.ok || !body?.success || !Array.isArray(body?.data)) return
+
+    const rows = body.data
+    if (rows.length === 0) {
+      alarmMetaByEquipment.value = {
+        ...alarmMetaByEquipment.value,
+        [equipmentId]: { recentAlarmAt: '-', lastActionAt: '-' },
+      }
+      alarmLastFetchedAt.set(equipmentId, Date.now())
+      return
+    }
+
+    const latestTimestampRow = rows.reduce((latest, item) => {
+      return toMillis(item?.timestamp) > toMillis(latest?.timestamp) ? item : latest
+    }, rows[0])
+
+    const latestUpdatedRow = rows.reduce((latest, item) => {
+      return toMillis(item?.updatedAt) > toMillis(latest?.updatedAt) ? item : latest
+    }, rows[0])
+
+    alarmMetaByEquipment.value = {
+      ...alarmMetaByEquipment.value,
+      [equipmentId]: {
+        recentAlarmAt: formatDateTime(latestTimestampRow?.timestamp),
+        lastActionAt: formatDateTime(latestUpdatedRow?.updatedAt),
+      },
+    }
+    alarmLastFetchedAt.set(equipmentId, Date.now())
+  } catch {
+    // no-op
+  } finally {
+    alarmFetchInFlight.delete(equipmentId)
+  }
+}
+
+const connectMqtt = () => {
+  mqttClient = mqtt.connect(resolveBrokerUrlForBrowser(rawBrokerUrl), {
+    clientId: `bs-scada-dashboard-${Math.random().toString(16).slice(2, 10)}`,
+    username: mqttUsername,
+    password: mqttPassword,
+    reconnectPeriod: 3000,
+    connectTimeout: 10000,
+    clean: true,
+  })
+
+  mqttClient.on('connect', () => {
+    mqttClient.subscribe(topicFilter, { qos: 0 })
+  })
+
+  mqttClient.on('message', (topic, payloadBuffer) => {
+    const payload = parsePayload(payloadBuffer)
+    if (!payload) return
+
+    const equipmentId = String(payload.equipment_id ?? parseTopicEquipmentId(topic)).trim()
+    if (!equipmentId) return
+
+    const previousRow = equipmentRealtimeMap.value[equipmentId]
+    const previousRuntimeSec = toNonNegativeNumber(previousRow?.accumulated_run_hours)
+    const payloadRuntimeSec = toNonNegativeNumber(payload.accumulated_run_hours)
+    const resolvedRuntimeSec = Math.max(previousRuntimeSec, payloadRuntimeSec)
+
+    equipmentRealtimeMap.value = {
+      ...equipmentRealtimeMap.value,
+      [equipmentId]: {
+        equipment_id: equipmentId,
+        status: normalizeStatus(payload.status),
+        accumulated_run_hours: resolvedRuntimeSec,
+        timestamp: payload.timestamp ?? '',
+        lastRuntimeTickMs: Date.now(),
+      },
+    }
+
+    fetchAlarmMeta(equipmentId)
+  })
+}
+
+const startRuntimeTicker = () => {
+  if (runtimeTimer) clearInterval(runtimeTimer)
+
+  runtimeTimer = setInterval(() => {
+    const nowMs = Date.now()
+    const current = equipmentRealtimeMap.value
+    const entries = Object.entries(current)
+    if (entries.length === 0) return
+
+    let changed = false
+    const nextMap = {}
+
+    for (const [equipmentId, row] of entries) {
+      const lastTickMs = Number(row.lastRuntimeTickMs) || nowMs
+      const deltaSec = Math.floor((nowMs - lastTickMs) / 1000)
+
+      if (deltaSec <= 0) {
+        nextMap[equipmentId] = row
+        continue
+      }
+
+      const shouldAccumulate = row.status === 'RUN'
+      nextMap[equipmentId] = {
+        ...row,
+        accumulated_run_hours: toNonNegativeNumber(row.accumulated_run_hours) + (shouldAccumulate ? deltaSec : 0),
+        lastRuntimeTickMs: lastTickMs + (deltaSec * 1000),
+      }
+      changed = true
+    }
+
+    if (changed) {
+      equipmentRealtimeMap.value = nextMap
+    }
+  }, 1000)
+}
+
 onMounted(() => {
   const duration = 1000
   const start = performance.now()
   const tick = (now) => {
     const t = Math.min((now - start) / duration, 1)
-    // ease-out cubic
     oeeProgress.value = 1 - Math.pow(1 - t, 3)
     if (t < 1) requestAnimationFrame(tick)
   }
   requestAnimationFrame(tick)
+  connectMqtt()
+  startRuntimeTicker()
+})
+
+onUnmounted(() => {
+  if (mqttClient) {
+    mqttClient.end(true)
+    mqttClient = null
+  }
+
+  if (runtimeTimer) {
+    clearInterval(runtimeTimer)
+    runtimeTimer = null
+  }
 })
 </script>
 
@@ -86,7 +333,6 @@ onMounted(() => {
       </section>
 
       <section class="main-grid">
-        <!-- 좌상단: 종합설비효율 -->
         <article class="panel oee-card">
           <div class="panel-header">
             <h2>종합설비효율 (OEE)</h2>
@@ -127,7 +373,6 @@ onMounted(() => {
           </div>
         </article>
 
-        <!-- 좌하단: 설비별 잔존 수명 -->
         <article class="panel life-card">
           <div class="panel-header">
             <h2>설비별 잔존 수명 (상위 5)</h2>
@@ -154,24 +399,44 @@ onMounted(() => {
           </table>
         </article>
 
-        <!-- 우측 전체: 설비 상세 현황 (2행 점유) -->
         <article class="panel detail-card">
           <div class="panel-header">
             <h2>설비 상세 현황</h2>
-            <span class="detail-count">전체 {{ equipmentRows.length }}건</span>
+            <span class="detail-count">전체 {{ detailRows.length }}건</span>
           </div>
           <div class="detail-table-wrap">
             <table class="data-table detail-table">
               <thead>
-                <tr><th>설비명</th><th>상태</th><th>가동시간</th><th>최근 알람</th><th>마지막 점검일</th></tr>
+                <tr>
+                  <th>설비명</th>
+                  <th>설비상태</th>
+                  <th>가동시간</th>
+                  <th>최근알람</th>
+                  <th>마지막 조치일</th>
+                </tr>
               </thead>
               <tbody>
-                <tr v-for="row in equipmentRows" :key="row.name">
-                  <td>{{ row.name }}</td>
-                  <td><i class="status-dot" :class="row.status.toLowerCase()"></i>{{ row.status }}</td>
-                  <td>{{ row.uptime }}</td>
-                  <td :class="{ danger: row.alarm !== '-' }">{{ row.alarm }}</td>
-                  <td>{{ row.check }}</td>
+                <tr v-for="row in detailRows" :key="row.equipment_id">
+                  <td>{{ row.equipment_id }}</td>
+                  <td>
+                    <span
+                      class="status-text"
+                      :class="{
+                        'status-run': row.status === 'RUN',
+                        'status-idle': row.status === 'IDLE',
+                        'status-stop': row.status === 'STOP',
+                        'status-alarm': row.status === 'ALARM',
+                      }"
+                    >
+                      {{ row.status }}
+                    </span>
+                  </td>
+                  <td>{{ row.accumulated_run_hours }} ({{ row.runtimeText }})</td>
+                  <td>{{ row.recentAlarmAt }}</td>
+                  <td>{{ row.lastActionAt }}</td>
+                </tr>
+                <tr v-if="detailRows.length === 0">
+                  <td colspan="5" class="empty-row">MQTT 데이터 수신 대기 중입니다.</td>
                 </tr>
               </tbody>
             </table>
@@ -186,7 +451,6 @@ onMounted(() => {
 .dashboard-page { min-width: 1180px; min-height: 100vh; background: #f5f7fb; }
 .content { padding: 22px 32px 30px; }
 
-/* 요약 카드 */
 .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-bottom: 16px; }
 .summary-card { height: 142px; display: flex; align-items: center; gap: 22px; padding: 26px 32px; background: #fff; border-radius: 14px; box-shadow: 0 5px 16px rgba(13, 36, 72, .12); }
 .summary-icon { width: 88px; height: 88px; display: grid; place-items: center; border-radius: 50%; font-size: 40px; }
@@ -198,7 +462,6 @@ onMounted(() => {
 .summary-card strong { font-size: 46px; line-height: 1; font-weight: 950; }
 .summary-card span { margin-left: 8px; font-weight: 800; }
 
-/* 메인 그리드 */
 .main-grid {
   display: grid;
   grid-template-columns: 0.75fr 1.25fr;
@@ -210,12 +473,10 @@ onMounted(() => {
 .panel-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 
-/* 카드 배치 */
 .oee-card  { grid-column: 1; grid-row: 1; }
 .life-card { grid-column: 1; grid-row: 2; }
 .detail-card { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; }
 
-/* OEE 카드 */
 .line-select { width: 116px; height: 36px; border: 1px solid #d8e1ed; border-radius: 6px; padding: 0 10px; color: #0d2448; font-weight: 800; background: #fff; }
 .oee-body { height: calc(100% - 48px); display: flex; align-items: center; justify-content: center; gap: 24px; padding: 0 8px; }
 .donut { width: 220px; height: 220px; flex-shrink: 0; border-radius: 50%; position: relative; display: grid; place-items: center; }
@@ -223,60 +484,18 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .donut span { position: relative; z-index: 1; text-align: center; font-weight: 900; }
 .donut b { font-size: 28px; }
 
-/* OEE 지표 */
-.oee-info { display: flex; flex-direction: column; align-items: center; gap: 0; width: 190px; flex-shrink: 0; }
-.oee-metric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 7px 12px;
-  border-radius: 8px;
-  background: #f7faff;
-  font-size: 14px;
-  font-weight: 850;
-}
+.oee-info { display: flex; flex-direction: column; align-items: center; width: 190px; flex-shrink: 0; }
+.oee-metric { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 7px 12px; border-radius: 8px; background: #f7faff; font-size: 14px; font-weight: 850; }
 .metric-label { display: flex; align-items: center; color: #4a5f7a; }
 .metric-val { color: #126de0; font-weight: 950; font-size: 15px; }
-.oee-operator {
-  font-size: 16px;
-  font-weight: 900;
-  color: #9aa8bc;
-  line-height: 1;
-  padding: 3px 0;
-}
-.oee-result-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding-top: 4px;
-}
-.oee-equals {
-  font-size: 20px;
-  font-weight: 900;
-  color: #126de0;
-  flex-shrink: 0;
-}
-.oee-total {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #e8f0fe, #f0f7ff);
-  border: 1px solid #b8d4f5;
-  text-align: center;
-  gap: 2px;
-}
+.oee-operator { font-size: 16px; font-weight: 900; color: #9aa8bc; line-height: 1; padding: 3px 0; }
+.oee-result-row { display: flex; align-items: center; gap: 6px; width: 100%; padding-top: 4px; }
+.oee-equals { font-size: 20px; font-weight: 900; color: #126de0; flex-shrink: 0; }
+.oee-total { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; padding: 8px 12px; border-radius: 8px; background: linear-gradient(135deg, #e8f0fe, #f0f7ff); border: 1px solid #b8d4f5; text-align: center; gap: 2px; }
 .oee-total span { font-size: 12px; font-weight: 850; color: #4a5f7a; }
 .oee-total strong { font-size: 20px; font-weight: 950; color: #126de0; }
 
-/* 공통 색상 */
-.dot, .status-dot { display: inline-block; border-radius: 50%; margin-right: 8px; }
-.dot { width: 12px; height: 12px; flex-shrink: 0; }
+.dot { display: inline-block; border-radius: 50%; margin-right: 8px; width: 12px; height: 12px; flex-shrink: 0; }
 .blue { background: #1375de; color: #1375de; }
 .cyan { background: #1599b6; color: #1599b6; }
 .orange { background: #ff6b16; color: #ff6b16; }
@@ -284,13 +503,11 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .green { background: #12b58f; color: #12b58f; }
 .red { background: #ff3045; color: #ff3045; }
 
-/* 테이블 공통 */
 .data-table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; border: 1px solid #e2e7ee; border-radius: 10px; overflow: hidden; font-size: 14px; }
 .data-table th, .data-table td { height: 34px; padding: 6px 10px; text-align: center; font-weight: 850; border-bottom: 1px solid #edf1f6; white-space: nowrap; }
 .data-table th { background: #fafafa; color: #142b50; font-size: 13px; font-weight: 950; }
 .data-table tr:last-child td { border-bottom: 0; }
 
-/* 설비 상세 현황 */
 .detail-table-wrap { flex: 1; min-height: 0; overflow-y: auto; border-radius: 10px; }
 .detail-table-wrap .data-table { border-radius: 0; border: none; }
 .detail-table-wrap::-webkit-scrollbar { width: 6px; }
@@ -299,13 +516,13 @@ h2 { margin: 0; font-size: 20px; font-weight: 950; letter-spacing: -.02em; }
 .detail-count { font-size: 13px; font-weight: 800; color: #4a5f7a; }
 .detail-table { font-size: 15px; }
 .detail-table th, .detail-table td { height: 34px; padding: 6px 12px; }
-.status-dot { width: 10px; height: 10px; }
-.running { background: #14b993; }
-.idle { background: #ff951a; }
-.error { background: #ff3045; }
-.danger { color: #ff2138; font-weight: 950; }
+.empty-row { color: #6b8098; font-weight: 900; }
+.status-text { font-weight: 900; }
+.status-run { color: #16a34a; }
+.status-idle { color: #facc15; }
+.status-stop { color: #f97316; }
+.status-alarm { color: #ef4444; }
 
-/* 잔존 수명 */
 .life-card { display: flex; flex-direction: column; }
 .life-table th, .life-table td { height: 42px; }
 .life-cell { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
