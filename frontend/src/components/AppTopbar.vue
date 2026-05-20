@@ -20,7 +20,7 @@ const menuItems = [
   { label: '설비 상세', to: '/equipment-detail' },
   { label: '알람 관리', to: '/equipment-alarm' },
   { label: '수명 관리', to: '/life' },
-  { label: '사용자 관리', to: '/admin/permission' },
+  { label: '사용자 관리', to: '/admin/permission', adminOnly: true },
 ]
 
 const currentTime = ref('')
@@ -31,6 +31,7 @@ const API_BASE = 'http://localhost:8080'
 
 const currentUserName = ref('사용자')
 const currentUserId = ref(null)
+const isAdmin = ref(false)
 const openAlarmCount = ref(0)
 
 const pad = (value) => String(value).padStart(2, '0')
@@ -92,10 +93,13 @@ const getStoredUser = () => {
   }
 }
 
+const checkAdmin = (role) => String(role ?? '').toUpperCase().replace(/^ROLE_/, '') === 'ADMIN'
+
 const loadCurrentUser = async () => {
   const storedUser = getStoredUser()
   currentUserId.value = storedUser.id ?? null
   currentUserName.value = storedUser.name || storedUser.username || '사용자'
+  isAdmin.value = checkAdmin(storedUser.role)
 
   const token = localStorage.getItem('token')
   if (!token) return
@@ -112,6 +116,7 @@ const loadCurrentUser = async () => {
 
     currentUserId.value = user.userId ?? storedUser.id ?? null
     currentUserName.value = user.name || storedUser.name || storedUser.username || '사용자'
+    isAdmin.value = checkAdmin(user.role)
   } catch {
     currentUserName.value = storedUser.name || storedUser.username || '사용자'
   }
@@ -175,16 +180,18 @@ onUnmounted(() => {
 
     <nav class="gnb">
       <template v-for="item in menuItems" :key="item.label">
-        <RouterLink
-          v-if="item.to"
-          :to="item.to"
-          :class="{ active: item.label === activeMenu }"
-        >
-          {{ item.label }}
-        </RouterLink>
-        <a v-else :class="{ active: item.label === activeMenu }">
-          {{ item.label }}
-        </a>
+        <template v-if="!item.adminOnly || isAdmin">
+          <RouterLink
+            v-if="item.to"
+            :to="item.to"
+            :class="{ active: item.label === activeMenu }"
+          >
+            {{ item.label }}
+          </RouterLink>
+          <a v-else :class="{ active: item.label === activeMenu }">
+            {{ item.label }}
+          </a>
+        </template>
       </template>
     </nav>
 
